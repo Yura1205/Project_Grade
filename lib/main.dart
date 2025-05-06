@@ -62,7 +62,7 @@ class _CameraPageState extends State<CameraPage> {
   }
 
   Future<void> _loadModel() async {
-    _interpreter = await Interpreter.fromAsset('sign_language_model.tflite');
+    _interpreter = await Interpreter.fromAsset('sign_language_model_quant.tflite');
     final labelData = await rootBundle.loadString('assets/labels.json');
     final Map<String, dynamic> labelsMap = json.decode(labelData);
     _labels = List.filled(labelsMap.length, '');
