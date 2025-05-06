@@ -1,0 +1,46 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+*.h5
+*.tflite
+migrate_working_dir/
+assets/sign_language_model.h5
+assets/sign_language_model.tflite
+
+# IDEs and editors
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# Flutter/Dart/Pub related
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+**/doc/api/
+**/ios/Flutter/.last_build_id
+
+# Obfuscation and Symbolication
+app.*.map.json
+app.*.symbols
+
+# Platform-specific builds
+ios/
+android/app/debug
+android/app/profile
+android/app/release
+linux/
+macos/
+windows/
+web/
