@@ -109,18 +109,26 @@ class _CameraPageState extends State<CameraPage> {
         width: 224, height: 224, interpolation: img.Interpolation.linear);
     final grayscale = img.grayscale(resized);
 
-    final input = List.generate(224, (y) {
-      return List.generate(224, (x) {
-        return [grayscale.getPixel(x, y).r / 255.0];
+    final input = List.generate(1, (_) {
+      return List.generate(224, (y) {
+        return List.generate(224, (x) {
+          return [grayscale.getPixel(x, y).r / 255.0];
+        });
       });
     });
 
     final output =
         List.filled(_labels.length, 0.0).reshape([1, _labels.length]);
-    _interpreter.run([input], output);
+    _interpreter.run(input, output);
+    print(output[0]);
 
-    final maxValue = output[0].reduce((double a, double b) => a > b ? a : b);
-    final predictedIndex = output[0].indexOf(maxValue);
+    final predictedIndex = (output[0] as List<double>)
+    .asMap()
+    .entries
+    .reduce((MapEntry<int, double> a, MapEntry<int, double> b) =>
+        a.value > b.value ? a : b)
+    .key;
+
 
     return _labels.containsKey(predictedIndex.toString())
         ? _labels[predictedIndex.toString()]!
