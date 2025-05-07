@@ -47,7 +47,6 @@ class _CameraPageState extends State<CameraPage> {
   late Interpreter _interpreter;
   late Map<String, String> _labels;
   bool _isProcessing = false;
-  bool _modelLoaded = false; // <- NUEVO: bandera para saber si todo está listo
   final List<Map<String, String>> _history = [];
 
   @override
@@ -70,21 +69,16 @@ class _CameraPageState extends State<CameraPage> {
 
   Future<void> _loadModel() async {
     try {
-      _interpreter = await Interpreter.fromAsset(
-          'assets/models/sign_language_model_quant.tflite');
+      _interpreter = await Interpreter.fromAsset('models/sign_language_model_quant.tflite');
       final jsonStr = await rootBundle.loadString('assets/labels.json');
       _labels = Map<String, String>.from(json.decode(jsonStr));
-      setState(() {
-        _modelLoaded = true;
-      });
     } catch (e) {
       print("Error cargando modelo o etiquetas: $e");
     }
   }
 
   Future<void> _captureAndClassify() async {
-    if (_isProcessing || !_modelLoaded) return;
-
+    if (_isProcessing) return;
     setState(() {
       _isProcessing = true;
     });
@@ -115,16 +109,13 @@ class _CameraPageState extends State<CameraPage> {
       });
     });
 
-    final output =
-        List.filled(_labels.length, 0.0).reshape([1, _labels.length]);
+    final output = List.filled(_labels.length, 0.0).reshape([1, _labels.length]);
+
     _interpreter.run([input], output);
 
-    final maxValue = output[0].reduce((double a, double b) => a > b ? a : b);
-    final predictedIndex = output[0].indexOf(maxValue);
-
-    return _labels.containsKey(predictedIndex.toString())
-        ? _labels[predictedIndex.toString()]!
-        : 'Desconocido';
+    final predictedIndex = output[0]
+        .indexWhere((e) => e == output[0].reduce((a, b) => a > b ? a : b));
+    return _labels[predictedIndex.toString()] ?? 'Desconocido';
   }
 
   Future<void> _showPopup(String prediction, File imageFile) async {
@@ -185,11 +176,7 @@ class _CameraPageState extends State<CameraPage> {
           FloatingActionButton(
             heroTag: 'capture',
             child: const Icon(Icons.pan_tool),
-            backgroundColor: _modelLoaded && !_isProcessing
-                ? Colors.deepPurple
-                : Colors.grey,
-            onPressed:
-                (_modelLoaded && !_isProcessing) ? _captureAndClassify : null,
+            onPressed: _captureAndClassify,
           ),
           FloatingActionButton(
             heroTag: 'history',
