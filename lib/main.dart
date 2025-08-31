@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as img;
 import 'history_page.dart'; // Asegúrate de tener este archivo creado
+import 'package:flutter_mediapipe/flutter_mediapipe.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

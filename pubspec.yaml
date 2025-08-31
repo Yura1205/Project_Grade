@@ -35,6 +35,7 @@ dependencies:
   image: ^4.1.3
   path_provider: ^2.1.1
   cupertino_icons: ^1.0.6
+  flutter_mediapipe: ^0.0.7
 
 dev_dependencies:
   flutter_test:
@@ -48,8 +49,9 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/models/sign_language_model_quant.tflite
+    - assets/models/sign_model.tflite
     - assets/labels.json
+    - assets/labels_numhands.json
 
   # To add assets to your application, add an assets section, like this:
   # assets:
