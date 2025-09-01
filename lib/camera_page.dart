@@ -15,6 +15,8 @@ class _CameraPageState extends State<CameraPage> {
   HandLandmarkerPlugin? _plugin;
   bool _isInitialized = false;
   bool _isDetecting = false;
+  List<CameraDescription> _cameras = [];
+  int _selectedCameraIdx = 0;
 
   final _predictionService = PredictionService();
   String _realTimeText = '';
@@ -26,26 +28,43 @@ class _CameraPageState extends State<CameraPage> {
   }
 
   Future<void> _initialize() async {
-    // inicializar modelo
     await _predictionService.loadModel();
 
-    // inicializar cámara
-    final cameras = await availableCameras();
-    final camera = cameras.first;
+    _cameras = await availableCameras();
+    if (_cameras.isEmpty) return;
 
-    _controller = CameraController(camera, ResolutionPreset.medium, enableAudio: false);
+    await _initCamera(_cameras[_selectedCameraIdx]);
 
-    // inicializar plugin
     _plugin = HandLandmarkerPlugin.create(
       numHands: 2,
       minHandDetectionConfidence: 0.7,
       delegate: HandLandmarkerDelegate.GPU,
     );
 
+    if (mounted) setState(() => _isInitialized = true);
+  }
+
+  Future<void> _initCamera(CameraDescription camera) async {
+    _controller = CameraController(
+      camera,
+      ResolutionPreset.max,
+      enableAudio: false,
+    );
+
     await _controller!.initialize();
     await _controller!.startImageStream(_processCameraImage);
+  }
 
-    if (mounted) setState(() => _isInitialized = true);
+  void _switchCamera() async {
+    if (_cameras.length < 2) return;
+
+    _selectedCameraIdx = (_selectedCameraIdx + 1) % _cameras.length;
+
+    await _controller?.stopImageStream();
+    await _controller?.dispose();
+
+    await _initCamera(_cameras[_selectedCameraIdx]);
+    if (mounted) setState(() {});
   }
 
   Future<void> _processCameraImage(CameraImage image) async {
@@ -72,7 +91,6 @@ class _CameraPageState extends State<CameraPage> {
 
   List<double> _buildInputVector(List<Hand> hands) {
     List<double> row = [];
-
     int numHands = hands.length;
 
     for (var hand in hands) {
@@ -83,12 +101,11 @@ class _CameraPageState extends State<CameraPage> {
       }
     }
 
-    // padding si falta mano
     while (row.length < 126) {
       row.add(0.0);
     }
 
-    row.add(numHands.toDouble()); // número de manos
+    row.add(numHands.toDouble());
     return row;
   }
 
@@ -102,16 +119,29 @@ class _CameraPageState extends State<CameraPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized) {
+    if (!_isInitialized || _controller == null || !_controller!.value.isInitialized) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
       body: Stack(
         children: [
-          CameraPreview(_controller!),
+          // Cámara ocupando toda la pantalla automáticamente
+          SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.cover, // Ajusta la cámara sin barras negras
+              alignment: Alignment.center,
+              child: SizedBox(
+                width: _controller!.value.previewSize!.height,
+                height: _controller!.value.previewSize!.width,
+                child: CameraPreview(_controller!),
+              ),
+            ),
+          ),
+
+          // Texto de predicción
           Positioned(
-            bottom: 50,
+            bottom: 120,
             left: 20,
             right: 20,
             child: Container(
@@ -121,6 +151,16 @@ class _CameraPageState extends State<CameraPage> {
                 _realTimeText,
                 style: const TextStyle(color: Colors.white, fontSize: 20),
               ),
+            ),
+          ),
+
+          // Botón para cambiar de cámara
+          Positioned(
+            bottom: 40,
+            right: 20,
+            child: FloatingActionButton(
+              onPressed: _switchCamera,
+              child: const Icon(Icons.cameraswitch),
             ),
           ),
         ],
