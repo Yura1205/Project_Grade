@@ -8,7 +8,7 @@ class PredictionService {
   bool _loaded = false;
 
   Future<void> loadModel() async {
-    _interpreter = await Interpreter.fromAsset('models/sign_model.tflite');
+    _interpreter = await Interpreter.fromAsset('assets/models/sign_model.tflite');
     final jsonStr = await rootBundle.loadString('assets/labels.json');
     _labels = Map<String, String>.from(json.decode(jsonStr));
     _loaded = true;
