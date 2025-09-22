@@ -37,6 +37,7 @@ dependencies:
   cupertino_icons: ^1.0.6
   #flutter_mediapipe: ^0.0.7
   hand_landmarker: ^2.1.0
+  flutter_tts: ^3.8.5
 
 dev_dependencies:
   flutter_test:
