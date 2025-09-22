@@ -1,4 +1,4 @@
-# ��� Lengua de Señas - Reconocimiento en Tiempo Real
+# 🤟 Lengua de Señas - Reconocimiento en Tiempo Real
 
 [![Flutter](https://img.shields.io/badge/Flutter-3.35.4-blue.svg)](https://flutter.dev/)
 [![Dart](https://img.shields.io/badge/Dart-3.9.2-blue.svg)](https://dart.dev/)
@@ -6,20 +6,20 @@
 
 **Una aplicación móvil de reconocimiento de lenguaje de señas en tiempo real utilizando Flutter, TensorFlow Lite y Computer Vision.**
 
-## ��� Descripción
+## 📖 Descripción
 
 Esta aplicación permite el reconocimiento automático de gestos de lenguaje de señas a través de la cámara del dispositivo, traduciendo los movimientos de las manos a texto en tiempo real. Utiliza un modelo de machine learning entrenado para detectar y clasificar diferentes letras y palabras del lenguaje de señas.
 
-### ��� Características Principales
+### ✨ Características Principales
 
-- **Reconocimiento en tiempo real** de gestos de lenguaje de señas
-- **Detección de manos** usando MediaPipe Hand Landmarker
-- **Modelo de ML personalizado** con TensorFlow Lite
-- **Soporte para múltiples gestos**: Letras (A-Z) y palabras comunes
-- **Interfaz intuitiva** con visualización de predicciones
-- **Multiplataforma** (Android, iOS, Web)
+- **Reconocimiento en tiempo real** de gestos de lenguaje de señas  
+- **Detección de manos** usando MediaPipe Hand Landmarker  
+- **Modelo de ML personalizado** con TensorFlow Lite  
+- **Soporte para múltiples gestos**: Letras (A-Z) y palabras comunes  
+- **Interfaz intuitiva** con visualización de predicciones  
+- **Multiplataforma** (Android, iOS, Web)  
 
-## ���️ Tecnologías Utilizadas
+## 🛠️ Tecnologías Utilizadas
 
 | Tecnología | Propósito |
 |------------|-----------|
@@ -28,7 +28,7 @@ Esta aplicación permite el reconocimiento automático de gestos de lenguaje de 
 | **TensorFlow Lite** | Inferencia de modelos de ML |
 | **MediaPipe Hand Landmarker** | Detección de puntos clave de manos |
 
-## ��� Instalación
+## 🚀 Instalación
 
 ```bash
 git clone https://github.com/Yura1205/Project_Grade.git
