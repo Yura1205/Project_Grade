@@ -6,7 +6,7 @@ import 'package:camera/camera.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as img;
-import 'history_page.dart'; // Asegúrate de tener este archivo creado
+import '../history_page.dart'; // Asegúrate de tener este archivo creado
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -175,8 +175,8 @@ class _CameraPageState extends State<CameraPage> {
         children: [
           FloatingActionButton(
             heroTag: 'capture',
-            child: const Icon(Icons.pan_tool),
             onPressed: _captureAndClassify,
+            child: const Icon(Icons.pan_tool),
           ),
           FloatingActionButton(
             heroTag: 'history',

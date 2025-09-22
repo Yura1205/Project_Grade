@@ -58,6 +58,8 @@ android {
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
+            minifyEnabled false  // ❌ deshabilita R8
+            shrinkResources false
             signingConfig signingConfigs.debug
         }
     }
@@ -69,5 +71,7 @@ flutter {
 
 dependencies {
     implementation 'org.tensorflow:tensorflow-lite:2.3.0' // o 2.6.0 según la versión usada en tflite_flutter 0.9.0
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.0"
+    
 }
 

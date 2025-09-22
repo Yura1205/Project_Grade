@@ -11,8 +11,8 @@
 *.h5
 *.tflite
 migrate_working_dir/
-assets/sign_language_model.h5
-assets/sign_language_model.tflite
+#assets/sign_language_model.h5
+#assets/sign_language_model.tflite
 
 # IDEs and editors
 .idea/
