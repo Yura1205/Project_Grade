@@ -72,14 +72,26 @@ class _CameraPageState extends State<CameraPage> {
     _isDetecting = true;
 
     try {
-      final hands = _plugin!.detect(image, _controller!.description.sensorOrientation);
+      final hands =
+          _plugin!.detect(image, _controller!.description.sensorOrientation);
 
       if (hands.isNotEmpty && _predictionService.isLoaded) {
-        final vector = _buildInputVector(hands);
+        // Normalizar landmarks igual que en Python
+        final hand = hands.first; // si soportas varias manos, itéralas
+        final landmarks =
+            hand.landmarks.map((lm) => [lm.x, lm.y, lm.z]).toList();
+
+        final vector = _predictionService.normalizeLandmarks(landmarks);
+
+// Asegúrate que vector tenga exactamente 126 floats
+        while (vector.length < 126) {
+          vector.add(0.0);
+        }
+
         final prediction = await _predictionService.predict(vector);
 
         setState(() {
-          _realTimeText = prediction;
+          _realTimeText = prediction?.toString() ?? '';
         });
       }
     } catch (e) {
@@ -105,7 +117,6 @@ class _CameraPageState extends State<CameraPage> {
       row.add(0.0);
     }
 
-    row.add(numHands.toDouble());
     return row;
   }
 
@@ -119,7 +130,9 @@ class _CameraPageState extends State<CameraPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized || _controller == null || !_controller!.value.isInitialized) {
+    if (!_isInitialized ||
+        _controller == null ||
+        !_controller!.value.isInitialized) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
