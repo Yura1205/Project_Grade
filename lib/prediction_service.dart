@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
@@ -19,33 +18,23 @@ class PredictionService {
   late Map<String, String> _labels;
   bool _loaded = false;
 
+  late Map<String, int> _labelNumHands;
+
   Future<void> loadModel() async {
-    // === Cargar modelo TFLite ===
     _interpreter =
         await Interpreter.fromAsset('assets/models/sign_model.tflite');
 
-    // === Cargar labels ===
     final jsonStr = await rootBundle.loadString('assets/labels.json');
     _labels = Map<String, String>.from(json.decode(jsonStr));
+
+    final jsonNumHands =
+        await rootBundle.loadString('assets/labels_numhands.json');
+    _labelNumHands = Map<String, int>.from(json.decode(jsonNumHands));
 
     _loaded = true;
   }
 
   bool get isLoaded => _loaded;
-
-  List<List<double>> rotateLandmarks(
-      List<List<double>> landmarks, int rotationDegrees) {
-    final rad = rotationDegrees * pi / 180;
-    final cosA = cos(rad);
-    final sinA = sin(rad);
-
-    return landmarks.map((lm) {
-      final x = lm[0];
-      final y = lm[1];
-      final z = lm[2];
-      return [x * cosA - y * sinA, x * sinA + y * cosA, z];
-    }).toList();
-  }
 
   /// Normaliza landmarks como en Python:
   /// - resta la muñeca (landmark 0)
@@ -77,7 +66,7 @@ class PredictionService {
     return shifted.expand((e) => e).toList();
   }
 
-  Future<PredictionResult?> predict(List<double> inputVector) async {
+  Future<PredictionResult?> predict(List<double> inputVector, int numHandsDetected) async {
     if (!_loaded) return null;
 
     // === Validar input shape ===
@@ -106,6 +95,13 @@ class PredictionService {
     final confidence = predictions[predictedIndex];
 
     final label = _labels[predictedIndex.toString()] ?? "Desconocido";
+
+    // 🔑 Validar número de manos
+    final requiredHands = _labelNumHands[label] ?? 1;
+    if (numHandsDetected != requiredHands) {
+      return PredictionResult("N/A", 0.0);
+    }
+
     return PredictionResult(label, confidence);
   }
 
