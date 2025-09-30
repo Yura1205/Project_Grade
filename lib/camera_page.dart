@@ -1,179 +1,232 @@
+import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:hand_detection/prediction_service.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
-import 'prediction_service.dart';
 
 class CameraPage extends StatefulWidget {
-  const CameraPage({super.key});
+  final CameraDescription camera;
+
+  const CameraPage({Key? key, required this.camera}) : super(key: key);
 
   @override
-  State<CameraPage> createState() => _CameraPageState();
+  _CameraPageState createState() => _CameraPageState();
 }
 
 class _CameraPageState extends State<CameraPage> {
   CameraController? _controller;
   HandLandmarkerPlugin? _plugin;
-  bool _isInitialized = false;
-  bool _isDetecting = false;
-  List<CameraDescription> _cameras = [];
-  int _selectedCameraIdx = 0;
-
-  final _predictionService = PredictionService();
   String _realTimeText = '';
+  String _currentWord = ''; // palabra en construcción
+  DateTime _lastPredictionTime = DateTime.now();
+  Duration _predictionDelay = Duration(seconds: 2);
+
+  final PredictionService _predictionService = PredictionService();
+  final FlutterTts _tts = FlutterTts();
+
+  List<CameraDescription>? _cameras;
+  int _currentCameraIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _initialize();
+    _initializeAll();
   }
 
-  Future<void> _initialize() async {
-    await _predictionService.loadModel();
-
+  Future<void> _initializeAll() async {
     _cameras = await availableCameras();
-    if (_cameras.isEmpty) return;
-
-    await _initCamera(_cameras[_selectedCameraIdx]);
-
-    _plugin = HandLandmarkerPlugin.create(
-      numHands: 2,
-      minHandDetectionConfidence: 0.7,
-      delegate: HandLandmarkerDelegate.GPU,
-    );
-
-    if (mounted) setState(() => _isInitialized = true);
-  }
-
-  Future<void> _initCamera(CameraDescription camera) async {
-    _controller = CameraController(
-      camera,
-      ResolutionPreset.max,
-      enableAudio: false,
-    );
-
-    await _controller!.initialize();
-    await _controller!.startImageStream(_processCameraImage);
-  }
-
-  void _switchCamera() async {
-    if (_cameras.length < 2) return;
-
-    _selectedCameraIdx = (_selectedCameraIdx + 1) % _cameras.length;
-
-    await _controller?.stopImageStream();
-    await _controller?.dispose();
-
-    await _initCamera(_cameras[_selectedCameraIdx]);
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _processCameraImage(CameraImage image) async {
-    if (_isDetecting || !_isInitialized || _plugin == null) return;
-    _isDetecting = true;
-
-    try {
-      final hands =
-          _plugin!.detect(image, _controller!.description.sensorOrientation);
-
-      if (hands.isNotEmpty && _predictionService.isLoaded) {
-        // Normalizar landmarks igual que en Python
-        final hand = hands.first; // si soportas varias manos, itéralas
-        final landmarks =
-            hand.landmarks.map((lm) => [lm.x, lm.y, lm.z]).toList();
-
-        final vector = _predictionService.normalizeLandmarks(landmarks);
-
-// Asegúrate que vector tenga exactamente 126 floats
-        while (vector.length < 126) {
-          vector.add(0.0);
-        }
-
-        final prediction = await _predictionService.predict(vector);
-
-        setState(() {
-          _realTimeText = prediction?.toString() ?? '';
-        });
-      }
-    } catch (e) {
-      debugPrint("Error: $e");
-    } finally {
-      _isDetecting = false;
-    }
-  }
-
-  List<double> _buildInputVector(List<Hand> hands) {
-    List<double> row = [];
-    int numHands = hands.length;
-
-    for (var hand in hands) {
-      for (var lm in hand.landmarks) {
-        row.add(lm.x);
-        row.add(lm.y);
-        row.add(lm.z);
-      }
-    }
-
-    while (row.length < 126) {
-      row.add(0.0);
-    }
-
-    return row;
+    await _initializeCamera(_cameras![_currentCameraIndex]);
+    await _initializeHandLandmarker();
+    await _predictionService.loadModel();
   }
 
   @override
   void dispose() {
     _controller?.dispose();
-    _plugin?.dispose();
-    _predictionService.dispose();
     super.dispose();
+  }
+
+  Future<void> _initializeCamera(CameraDescription cameraDescription) async {
+    _controller = CameraController(cameraDescription, ResolutionPreset.medium);
+    await _controller!.initialize();
+    if (!mounted) return;
+    setState(() {});
+    _controller!.startImageStream((image) {
+      if (_plugin != null && _predictionService.isLoaded) {
+        _processCameraImage(image);
+      }
+    });
+  }
+
+  Future<void> _initializeHandLandmarker() async {
+    _plugin = await HandLandmarkerPlugin.create();
+  }
+
+  Future<void> _processCameraImage(CameraImage image) async {
+    final hands =
+        await _plugin!.detect(image, _controller!.description.sensorOrientation);
+
+    if (hands.isNotEmpty && _predictionService.isLoaded) {
+      // Ordenamos manos por eje X (izq -> der)
+      final sortedHands = hands.toList()
+        ..sort((a, b) =>
+            a.landmarks.map((lm) => lm.x).reduce((s, v) => s + v).compareTo(
+                b.landmarks.map((lm) => lm.x).reduce((s, v) => s + v)));
+
+      List<double> row = [];
+      for (var hand in sortedHands) {
+        var landmarks =
+            hand.landmarks.map((lm) => [lm.x, lm.y, lm.z]).toList();
+
+        // Ajustar rotación según la cámara
+        landmarks = _rotateLandmarks(
+            landmarks, _controller!.description.sensorOrientation);
+
+        // Normalizar igual que en Python
+        final vector = _predictionService.normalizeLandmarks(landmarks);
+
+        row.addAll(vector);
+      }
+
+      // Padding a 126 (si hay 1 mano)
+      while (row.length < 126) {
+        row.add(0.0);
+      }
+
+      // === Ahora predice con numHands ===
+      final prediction =
+          await _predictionService.predict(row, hands.length);
+
+      if (prediction != null &&
+          prediction.label != "N/A" &&
+          prediction.confidence > 0.8) {
+        final now = DateTime.now();
+
+        if (now.difference(_lastPredictionTime) > _predictionDelay) {
+          _lastPredictionTime = now;
+
+          // Agregar letra actual a la palabra
+          _currentWord += prediction.label;
+
+          // Leer solo la letra actual
+          _speak(prediction.label);
+
+          setState(() {
+            _realTimeText = prediction.label;
+          });
+        }
+      }
+    }
+  }
+
+  List<List<double>> _rotateLandmarks(
+      List<List<double>> landmarks, int rotationDegrees) {
+    final rad = rotationDegrees * pi / 180;
+    final cosA = cos(rad);
+    final sinA = sin(rad);
+
+    return landmarks.map((lm) {
+      final x = lm[0];
+      final y = lm[1];
+      final z = lm[2];
+      return [
+        x * cosA - y * sinA,
+        x * sinA + y * cosA,
+        z
+      ];
+    }).toList();
+  }
+
+  Future<void> _speak(String text) async {
+    await _tts.setLanguage("es-ES");
+    await _tts.setSpeechRate(0.7);
+    await _tts.speak(text);
+  }
+
+  void _deleteLastLetter() {
+    if (_currentWord.isNotEmpty) {
+      setState(() {
+        _currentWord = _currentWord.substring(0, _currentWord.length - 1);
+      });
+    }
+  }
+
+  void _resetWord() {
+    setState(() {
+      _currentWord = '';
+    });
+  }
+
+  Future<void> _switchCamera() async {
+    if (_cameras == null || _cameras!.isEmpty) return;
+    _currentCameraIndex = (_currentCameraIndex + 1) % _cameras!.length;
+    await _controller?.dispose();
+    await _initializeCamera(_cameras![_currentCameraIndex]);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized ||
-        _controller == null ||
-        !_controller!.value.isInitialized) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_controller == null || !_controller!.value.isInitialized) {
+      return const Center(child: CircularProgressIndicator());
     }
 
     return Scaffold(
-      body: Stack(
+      appBar: AppBar(
+        title: const Text("Reconocimiento de señas"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.cameraswitch),
+            onPressed: _switchCamera,
+          ),
+        ],
+      ),
+      body: Column(
         children: [
-          // Cámara ocupando toda la pantalla automáticamente
-          SizedBox.expand(
-            child: FittedBox(
-              fit: BoxFit.cover, // Ajusta la cámara sin barras negras
-              alignment: Alignment.center,
-              child: SizedBox(
-                width: _controller!.value.previewSize!.height,
-                height: _controller!.value.previewSize!.width,
-                child: CameraPreview(_controller!),
-              ),
+          Expanded(
+            flex: 2,
+            child: CameraPreview(_controller!),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text(
+              "Seña actual: $_realTimeText",
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
           ),
-
-          // Texto de predicción
-          Positioned(
-            bottom: 120,
-            left: 20,
-            right: 20,
+          Padding(
+            padding: const EdgeInsets.all(16.0),
             child: Container(
+              width: double.infinity,
               padding: const EdgeInsets.all(12),
-              color: Colors.black54,
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(8),
+              ),
               child: Text(
-                _realTimeText,
-                style: const TextStyle(color: Colors.white, fontSize: 20),
+                _currentWord,
+                style: const TextStyle(
+                    fontSize: 24, fontWeight: FontWeight.bold),
               ),
             ),
           ),
-
-          // Botón para cambiar de cámara
-          Positioned(
-            bottom: 40,
-            right: 20,
-            child: FloatingActionButton(
-              onPressed: _switchCamera,
-              child: const Icon(Icons.cameraswitch),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _deleteLastLetter,
+                  icon: const Icon(Icons.backspace),
+                  label: const Text("Borrar"),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _resetWord,
+                  icon: const Icon(Icons.clear),
+                  label: const Text("Reset"),
+                ),
+              ],
             ),
           ),
         ],
