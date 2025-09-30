@@ -39,7 +39,7 @@ class _CameraPageState extends State<CameraPage> {
     _cameras = await availableCameras();
     await _initializeCamera(_cameras![_currentCameraIndex]);
     await _initializeHandLandmarker();
-    _predictionService.loadModel();
+    await _predictionService.loadModel();
   }
 
   @override
@@ -69,22 +69,35 @@ class _CameraPageState extends State<CameraPage> {
         await _plugin!.detect(image, _controller!.description.sensorOrientation);
 
     if (hands.isNotEmpty && _predictionService.isLoaded) {
-      final hand = hands.first; // usamos la primera mano detectada
-      var landmarks = hand.landmarks.map((lm) => [lm.x, lm.y, lm.z]).toList();
+      // Ordenamos manos por eje X (izq -> der)
+      final sortedHands = hands.toList()
+        ..sort((a, b) =>
+            a.landmarks.map((lm) => lm.x).reduce((s, v) => s + v).compareTo(
+                b.landmarks.map((lm) => lm.x).reduce((s, v) => s + v)));
 
-      // Ajustar rotación según la cámara
-      landmarks = _rotateLandmarks(
-          landmarks, _controller!.description.sensorOrientation);
+      List<double> row = [];
+      for (var hand in sortedHands) {
+        var landmarks =
+            hand.landmarks.map((lm) => [lm.x, lm.y, lm.z]).toList();
 
-      // Normalizar igual que en Python
-      final vector = _predictionService.normalizeLandmarks(landmarks);
+        // Ajustar rotación según la cámara
+        landmarks = _rotateLandmarks(
+            landmarks, _controller!.description.sensorOrientation);
 
-      while (vector.length < 126) {
-        vector.add(0.0);
+        // Normalizar igual que en Python
+        final vector = _predictionService.normalizeLandmarks(landmarks);
+
+        row.addAll(vector);
       }
 
+      // Padding a 126 (si hay 1 mano)
+      while (row.length < 126) {
+        row.add(0.0);
+      }
+
+      // === Ahora predice con numHands ===
       final prediction =
-          await _predictionService.predict(vector, hands.length);
+          await _predictionService.predict(row, hands.length);
 
       if (prediction != null &&
           prediction.label != "N/A" &&
@@ -127,7 +140,7 @@ class _CameraPageState extends State<CameraPage> {
   }
 
   Future<void> _speak(String text) async {
-    await _tts.setLanguage("es-ES"); // cambia según idioma
+    await _tts.setLanguage("es-ES");
     await _tts.setSpeechRate(0.7);
     await _tts.speak(text);
   }
@@ -171,13 +184,10 @@ class _CameraPageState extends State<CameraPage> {
       ),
       body: Column(
         children: [
-          // Vista previa de la cámara
           Expanded(
             flex: 2,
             child: CameraPreview(_controller!),
           ),
-
-          // Texto actual reconocido
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Text(
@@ -185,8 +195,6 @@ class _CameraPageState extends State<CameraPage> {
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
           ),
-
-          // Palabra construida en una sola línea
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Container(
@@ -198,13 +206,11 @@ class _CameraPageState extends State<CameraPage> {
               ),
               child: Text(
                 _currentWord,
-                style:
-                    const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                    fontSize: 24, fontWeight: FontWeight.bold),
               ),
             ),
           ),
-
-          // Botones de acciones
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(

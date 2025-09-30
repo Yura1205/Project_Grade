@@ -24,7 +24,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Lengua de Señas',
       theme: ThemeData(primarySwatch: Colors.deepPurple),
-      home: CameraPage(camera: camera), // 👈 ahora sí pasamos la cámara
+      home: CameraPage(camera: camera), // 👈 pasamos la cámara
     );
   }
 }
