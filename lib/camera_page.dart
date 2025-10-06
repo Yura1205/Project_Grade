@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:hand_detection/prediction_service.dart';
@@ -37,10 +39,88 @@ class _CameraPageState extends State<CameraPage> {
   bool _isProcessing = false; // Evitar procesamiento simultáneo
   int _frameSkip = 0; // Saltar frames para optimizar
 
+  // 🧭 Detección de orientación automática
+  DeviceOrientation _currentOrientation = DeviceOrientation.portraitUp;
+
   @override
   void initState() {
     super.initState();
     _initializeAll();
+    _initializeOrientationListener();
+  }
+
+  // 🧭 Inicializar listener de orientación
+  void _initializeOrientationListener() {
+    // Obtener orientación inicial
+    _updateOrientation();
+    
+    // Escuchar cambios de orientación usando MediaQuery
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _updateOrientation();
+    });
+  }
+
+  // 🧭 Actualizar orientación actual
+  void _updateOrientation() {
+    if (mounted) {
+      final MediaQueryData mediaQuery = MediaQuery.of(context);
+      final Orientation orientation = mediaQuery.orientation;
+      
+      // Determinar orientación específica basada en las dimensiones
+      if (orientation == Orientation.portrait) {
+        _currentOrientation = DeviceOrientation.portraitUp;
+      } else {
+        // Para landscape, asumimos landscapeLeft por defecto
+        // En implementación más avanzada se podría usar sensors
+        _currentOrientation = DeviceOrientation.landscapeLeft;
+      }
+      
+      print("🧭 Orientación detectada: $_currentOrientation");
+    }
+  }
+
+  // 🧭 Compensar orientación de landmarks automáticamente
+  List<List<double>> _compensateOrientation(List<List<double>> landmarks) {
+    // Si estamos en portrait, no necesitamos compensar (orientación base)
+    if (_currentOrientation == DeviceOrientation.portraitUp) {
+      return landmarks;
+    }
+
+    // Crear una copia de landmarks para no modificar el original
+    List<List<double>> compensatedLandmarks = landmarks
+        .map((landmark) => List<double>.from(landmark))
+        .toList();
+
+    // Aplicar rotación según la orientación detectada
+    for (int i = 0; i < compensatedLandmarks.length; i++) {
+      double x = compensatedLandmarks[i][0];
+      double y = compensatedLandmarks[i][1];
+      // Z no se ve afectado por rotación 2D, se mantiene igual
+
+      switch (_currentOrientation) {
+        case DeviceOrientation.landscapeLeft:
+          // Rotar 90° en sentido horario: (x,y) -> (y, 1-x)
+          compensatedLandmarks[i][0] = y;
+          compensatedLandmarks[i][1] = 1.0 - x;
+          break;
+        case DeviceOrientation.landscapeRight:
+          // Rotar 90° en sentido antihorario: (x,y) -> (1-y, x)
+          compensatedLandmarks[i][0] = 1.0 - y;
+          compensatedLandmarks[i][1] = x;
+          break;
+        case DeviceOrientation.portraitDown:
+          // Rotar 180°: (x,y) -> (1-x, 1-y)
+          compensatedLandmarks[i][0] = 1.0 - x;
+          compensatedLandmarks[i][1] = 1.0 - y;
+          break;
+        default:
+          // portraitUp - no cambiar
+          break;
+      }
+    }
+
+    print("🧭 Compensación aplicada para orientación: $_currentOrientation");
+    return compensatedLandmarks;
   }
 
   // Test con datos conocidos - AGREGAR ESTE MÉTODO
@@ -190,9 +270,13 @@ class _CameraPageState extends State<CameraPage> {
         print("📱   Index[8]: (${landmarks[8][0].toStringAsFixed(6)}, ${landmarks[8][1].toStringAsFixed(6)}, ${landmarks[8][2].toStringAsFixed(6)})");
         print("📱   Middle[12]: (${landmarks[12][0].toStringAsFixed(6)}, ${landmarks[12][1].toStringAsFixed(6)}, ${landmarks[12][2].toStringAsFixed(6)})");
 
-        // NO aplicar rotación - igual que en Python
-        // landmarks = _rotateLandmarks(
-        //     landmarks, _controller!.description.sensorOrientation);
+        // 🧭 Aplicar compensación de orientación automática
+        landmarks = _compensateOrientation(landmarks);
+        print("📱 Landmarks después de compensación de orientación (primeros 3):");
+        for (int i = 0; i < 3; i++) {
+          final lm = landmarks[i];
+          print("📱   [$i]: (${lm[0].toStringAsFixed(6)}, ${lm[1].toStringAsFixed(6)}, ${lm[2].toStringAsFixed(6)})");
+        }
 
         // Normalizar igual que en Python
         final vector = _predictionService.normalizeLandmarks(landmarks);
@@ -337,14 +421,18 @@ class _CameraPageState extends State<CameraPage> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
+    // 🧭 Actualizar orientación cuando se reconstruye el widget
+    _updateOrientation();
+    
     if (_controller == null || !_controller!.value.isInitialized) {
       return const Center(child: CircularProgressIndicator());
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Reconocimiento de señas (HORIZONTAL)"),
+        title: const Text("Reconocimiento de señas (AUTO-ORIENTACIÓN)"),
         actions: [
           // Botón para test con datos conocidos
           IconButton(

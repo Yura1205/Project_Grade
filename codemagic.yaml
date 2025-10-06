@@ -4,20 +4,53 @@
 
 workflows:
   ios-workflow:
-    name: 🍎 iOS Workflow
+    name: 🍎 iOS Build - Sign Language Detector
+    max_build_duration: 60
+    instance_type: mac_mini_m1
     environment:
       flutter: stable
       xcode: latest
       cocoapods: default
+      vars:
+        BUNDLE_ID: "com.yura1205.signlanguagedetector"
+        APP_NAME: "Sign Language Detector"
     scripts:
-      - name: 🔧 Install dependencies
+      - name: 🔧 Get Flutter dependencies
         script: |
+          flutter clean
           flutter packages get
-      - name: 🍎 Build iOS
+      
+      - name: 📱 Install iOS dependencies
         script: |
-          flutter build ios --no-codesign
+          find . -name "Podfile" -execdir pod install \;
+      
+      - name: 🧪 Run Flutter analyze
+        script: |
+          flutter analyze
+        ignore_failure: true
+      
+      - name: 🍎 Build iOS (no codesign)
+        script: |
+          flutter build ios --no-codesign --release
+      
+      - name: 📦 Create unsigned IPA
+        script: |
+          cd build/ios/iphoneos
+          mkdir Payload
+          cp -r Runner.app Payload/
+          zip -r app-unsigned.ipa Payload/
+    
     artifacts:
-      - build/ios/**/*.app
+      - build/ios/iphoneos/*.ipa
+      - build/ios/iphoneos/Runner.app
+    
+    publishing:
+      email:
+        recipients:
+          - tu-email@example.com  # Cambia por tu email
+        notify:
+          success: true
+          failure: true
       - build/ios/**/*.ipa
     publishing:
       # Para distribución interna (sin App Store)

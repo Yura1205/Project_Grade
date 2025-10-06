@@ -6,13 +6,15 @@ import 'camera_page.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // � Forzar orientación horizontal
+  // 🔄 Permitir todas las orientaciones para detección automática
   await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
 
-  // �🔑 obtiene las cámaras disponibles
+  // 🔑 obtiene las cámaras disponibles
   final cameras = await availableCameras();
 
   // Por ejemplo, usamos la cámara trasera
