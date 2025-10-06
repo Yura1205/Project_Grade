@@ -1,30 +1,56 @@
-// This is a basic Flutter widget test.
+// Test para la app de detección de señas
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// Este test verifica que la app de detección de señas se inicie correctamente
+// y muestre los elementos esperados de la interfaz de cámara.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:camera/camera.dart';
 
 import 'package:hand_detection/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
+  testWidgets('Sign Language Detection App smoke test', (WidgetTester tester) async {
+    // Crear una cámara mock para testing
+    final List<CameraDescription> cameras = [
+      const CameraDescription(
+        name: 'Test Camera',
+        lensDirection: CameraLensDirection.back,
+        sensorOrientation: 90,
+      ),
+    ];
+
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+    await tester.pumpWidget(MyApp(camera: cameras.first));
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // Verificar que la app se inicia
+    // Buscar elementos típicos de una app de cámara
+    expect(find.byType(Scaffold), findsOneWidget);
+    
+    // Verificar que hay un AppBar
+    expect(find.byType(AppBar), findsOneWidget);
+    
+    // Verificar el título de la app
+    expect(find.text('Reconocimiento de señas (HORIZONTAL)'), findsOneWidget);
+    
+    // Verificar que no hay errores críticos
+    expect(tester.takeException(), isNull);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  testWidgets('App shows camera permission elements', (WidgetTester tester) async {
+    // Crear una cámara mock
+    final List<CameraDescription> cameras = [
+      const CameraDescription(
+        name: 'Test Camera',
+        lensDirection: CameraLensDirection.back,
+        sensorOrientation: 90,
+      ),
+    ];
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    await tester.pumpWidget(MyApp(camera: cameras.first));
+    
+    // La app debería tener una estructura básica sin crashear
+    expect(find.byType(MaterialApp), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

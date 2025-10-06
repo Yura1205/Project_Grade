@@ -20,7 +20,7 @@ class _CameraPageState extends State<CameraPage> {
   String _realTimeText = '';
   String _currentWord = ''; // palabra en construcción
   DateTime _lastPredictionTime = DateTime.now();
-  Duration _predictionDelay = Duration(milliseconds: 500); // Reducir delay
+  Duration _predictionDelay = Duration(milliseconds: 200); // Más frecuente para mejor UX
 
   final PredictionService _predictionService = PredictionService();
   final FlutterTts _tts = FlutterTts();
@@ -31,7 +31,11 @@ class _CameraPageState extends State<CameraPage> {
   // 🎯 Sistema de estabilización de predicciones
   Map<String, int> _predictionCounts = {};
   String _lastStableLabel = '';
-  int _stableThreshold = 3; // Necesita 3 predicciones consecutivas
+  int _stableThreshold = 2; // Reducir a 2 para más responsividad
+
+  // 🚀 Control de rendimiento
+  bool _isProcessing = false; // Evitar procesamiento simultáneo
+  int _frameSkip = 0; // Saltar frames para optimizar
 
   @override
   void initState() {
@@ -88,14 +92,22 @@ class _CameraPageState extends State<CameraPage> {
   Future<void> _initializeCamera(CameraDescription cameraDescription) async {
     _controller = CameraController(
       cameraDescription, 
-      ResolutionPreset.medium,
+      ResolutionPreset.low, // Cambiar a low para mejor performance
       enableAudio: false, // No necesitamos audio
+      imageFormatGroup: ImageFormatGroup.yuv420, // Formato más eficiente
     );
+    
     await _controller!.initialize();
     
-    print("📱 === CONFIGURACIÓN DE CÁMARA ===");
+    // Configurar FPS para mejor fluidez
+    await _controller!.setFocusMode(FocusMode.auto);
+    await _controller!.setExposureMode(ExposureMode.auto);
+    
+    print("📱 === CONFIGURACIÓN DE CÁMARA OPTIMIZADA ===");
+    print("📱 Resolución: ${_controller!.value.previewSize}");
     print("📱 Orientación sensor: ${_controller!.description.sensorOrientation}");
     print("📱 Lente frontal: ${_controller!.description.lensDirection == CameraLensDirection.front}");
+    print("📱 Formato: yuv420 (optimizado)");
     
     if (!mounted) return;
     setState(() {});
@@ -111,12 +123,23 @@ class _CameraPageState extends State<CameraPage> {
   }
 
   Future<void> _processCameraImage(CameraImage image) async {
-    final hands =
-        _plugin!.detect(image, _controller!.description.sensorOrientation);
+    // 🚀 Optimización: Evitar procesamiento simultáneo
+    if (_isProcessing) return;
+    
+    // 🚀 Optimización: Saltar frames para mejor rendimiento
+    _frameSkip++;
+    if (_frameSkip < 2) return; // Procesar solo cada 2 frames
+    _frameSkip = 0;
+    
+    _isProcessing = true;
+    
+    try {
+      final hands =
+          _plugin!.detect(image, _controller!.description.sensorOrientation);
 
-    print("📱 === PROCESANDO IMAGEN (ORIENTACIÓN: ${_controller!.description.sensorOrientation}°) ===");
-    print("📱 Número de manos detectadas: ${hands.length}");
-    print("📱 Imagen: ${image.width}x${image.height}");
+      print("📱 === PROCESANDO IMAGEN (ORIENTACIÓN: ${_controller!.description.sensorOrientation}°) ===");
+      print("📱 Número de manos detectadas: ${hands.length}");
+      print("📱 Imagen: ${image.width}x${image.height}");
 
     if (hands.isNotEmpty && _predictionService.isLoaded) {
       // Imprimir información de cada mano detectada
@@ -238,6 +261,10 @@ class _CameraPageState extends State<CameraPage> {
         }
       }
     }
+    } finally {
+      // 🚀 Siempre liberar el flag de procesamiento
+      _isProcessing = false;
+    }
   }
 
   Future<void> _speak(String text) async {
@@ -335,33 +362,39 @@ class _CameraPageState extends State<CameraPage> {
         children: [
           Expanded(
             flex: 2,
-            child: CameraPreview(_controller!),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              "Seña actual: $_realTimeText",
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            child: AspectRatio(
+              aspectRatio: _controller!.value.aspectRatio,
+              child: CameraPreview(_controller!),
             ),
           ),
-          Padding(
+          Container(
+            color: Colors.black87,
             padding: const EdgeInsets.all(16.0),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                _currentWord,
-                style: const TextStyle(
-                    fontSize: 24, fontWeight: FontWeight.bold),
-              ),
+            child: Column(
+              children: [
+                Text(
+                  "Seña actual: $_realTimeText",
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Palabra: $_currentWord",
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          // Botones de control optimizados
+          Container(
+            color: Colors.grey[900],
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
@@ -369,11 +402,28 @@ class _CameraPageState extends State<CameraPage> {
                   onPressed: _deleteLastLetter,
                   icon: const Icon(Icons.backspace),
                   label: const Text("Borrar"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red[700],
+                    foregroundColor: Colors.white,
+                  ),
                 ),
                 ElevatedButton.icon(
                   onPressed: _resetWord,
-                  icon: const Icon(Icons.clear),
+                  icon: const Icon(Icons.refresh),
                   label: const Text("Reset"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[700],
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _testWithKnownData,
+                  icon: const Icon(Icons.science),
+                  label: const Text("Test"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green[700],
+                    foregroundColor: Colors.white,
+                  ),
                 ),
               ],
             ),
