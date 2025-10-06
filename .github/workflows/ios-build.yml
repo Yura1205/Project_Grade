@@ -45,7 +45,20 @@ jobs:
 
     - name: 🏗️ Build iOS (Development - Sin firmar)
       run: |
+        echo "🔨 Iniciando compilación iOS..."
         flutter build ios --no-codesign --debug --verbose
+        
+        echo "📁 Verificando archivos generados..."
+        ls -la build/ios/iphoneos/ || echo "Directorio iphoneos no encontrado"
+        
+        # Verificar que la app se generó
+        if [ -d "build/ios/iphoneos/Runner.app" ]; then
+          echo "✅ App compilada exitosamente: Runner.app"
+          ls -la build/ios/iphoneos/Runner.app/
+        else
+          echo "❌ No se encontró Runner.app"
+          find build/ios -name "*.app" -type d || echo "No se encontraron archivos .app"
+        fi
         
     - name: 📋 Create Build Summary
       run: |
@@ -100,13 +113,21 @@ jobs:
         # Listar simuladores disponibles
         xcrun simctl list devices available
         
-        # Iniciar iPhone 15 Pro
-        SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone 15 Pro" | head -1 | grep -o '[0-9A-F-]\{36\}')
+        # Iniciar iPhone 16 Pro (disponible en los logs)
+        SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone 16 Pro" | head -1 | grep -oE '[0-9A-F-]{36}')
         echo "Starting simulator: $SIMULATOR_ID"
-        xcrun simctl boot "$SIMULATOR_ID"
         
-        # Esperar a que inicie
-        sleep 30
+        if [ -n "$SIMULATOR_ID" ]; then
+          xcrun simctl boot "$SIMULATOR_ID"
+          echo "✅ Simulator started successfully"
+        else
+          echo "❌ No iPhone 16 Pro simulator found, using iPhone SE"
+          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone SE" | head -1 | grep -oE '[0-9A-F-]{36}')
+          xcrun simctl boot "$SIMULATOR_ID"
+        fi
+        
+        # Esperar a que inicie (reducir tiempo)
+        sleep 15
 
     - name: 🧪 Run Flutter Tests in Simulator
       run: |
