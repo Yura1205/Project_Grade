@@ -108,7 +108,7 @@ class _CameraPageState extends State<CameraPage> {
           _lastPredictionTime = now;
 
           // Agregar letra actual a la palabra
-          _currentWord += prediction.label;
+          _currentWord += "${prediction.label} ";
 
           // Leer solo la letra actual
           _speak(prediction.label);
