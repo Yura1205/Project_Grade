@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -21,7 +20,7 @@ class _CameraPageState extends State<CameraPage> {
   String _realTimeText = '';
   String _currentWord = ''; // palabra en construcción
   DateTime _lastPredictionTime = DateTime.now();
-  Duration _predictionDelay = Duration(seconds: 2);
+  Duration _predictionDelay = Duration(milliseconds: 500); // Reducir delay
 
   final PredictionService _predictionService = PredictionService();
   final FlutterTts _tts = FlutterTts();
@@ -29,10 +28,42 @@ class _CameraPageState extends State<CameraPage> {
   List<CameraDescription>? _cameras;
   int _currentCameraIndex = 0;
 
+  // 🎯 Sistema de estabilización de predicciones
+  Map<String, int> _predictionCounts = {};
+  String _lastStableLabel = '';
+  int _stableThreshold = 3; // Necesita 3 predicciones consecutivas
+
   @override
   void initState() {
     super.initState();
     _initializeAll();
+  }
+
+  // Test con datos conocidos - AGREGAR ESTE MÉTODO
+  void testWithKnownData() {
+    // Datos generados desde Python que deberían dar "A"
+    List<double> testVector = [0.0, 0.0, 0.0, 0.5345224738121033, -0.5345232486724854, -0.26726147532463074, 1.0690464973449707, -1.0690456628799438, -0.5345229506492615, 1.3363077640533447, -1.6035689115524292, -0.668153703212738, 1.6035689115524292, -2.138092279434204, -0.8017844557762146, 1.3363077640533447, 0.5345224738121033, -0.26726147532463074, 1.6035689115524292, 1.0690464973449707, -0.4008922278881073, 1.8708301782608032, 1.3363077640533447, -0.5345229506492615, 2.1380913257598877, 1.6035689115524292, -0.668153703212738, 0.5345224738121033, 0.8017836809158325, -0.26726147532463074, 0.8017836809158325, 1.3363077640533447, -0.4008922278881073, 1.0690464973449707, 1.8708301782608032, -0.5345229506492615, 1.3363077640533447, 2.1380913257598877, -0.668153703212738, -0.26726123690605164, 0.5345224738121033, -0.26726147532463074, -0.5345232486724854, 1.0690464973449707, -0.4008922278881073, -0.8017844557762146, 1.6035689115524292, -0.5345229506492615, -1.0690456628799438, 1.8708301782608032, -0.668153703212738, -1.0690456628799438, 0.26726123690605164, -0.26726147532463074, -1.3363077640533447, 0.8017836809158325, -0.4008922278881073, -1.6035689115524292, 1.0690464973449707, -0.5345229506492615, -1.8708301782608032, 1.3363077640533447, -0.668153703212738, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    
+    print("🧪 ===== TESTING CON DATOS CONOCIDOS =====");
+    print("🧪 Vector length: ${testVector.length}");
+    
+    final prediction = _predictionService.predict(testVector.sublist(0, 126), 1);
+    
+    if (prediction != null) {
+      print("🧪 RESULTADO TEST:");
+      print("🧪 Label: ${prediction.label}");
+      print("🧪 Confidence: ${prediction.confidence}");
+      print("🧪 ¿Es 'A'?: ${prediction.label == 'A'}");
+      
+      if (prediction.label == 'A' && prediction.confidence > 0.5) {
+        print("✅ TEST PASÓ: El modelo funciona correctamente");
+      } else {
+        print("❌ TEST FALLÓ: El modelo no predice 'A' o confianza muy baja");
+      }
+    } else {
+      print("🧪 ERROR: No se pudo hacer predicción");
+    }
+    print("🧪 ===== FIN TEST =====");
   }
 
   Future<void> _initializeAll() async {
@@ -40,6 +71,12 @@ class _CameraPageState extends State<CameraPage> {
     await _initializeCamera(_cameras![_currentCameraIndex]);
     await _initializeHandLandmarker();
     await _predictionService.loadModel();
+    
+    // 🧪 Ejecutar test automáticamente cuando el modelo esté cargado
+    if (_predictionService.isLoaded) {
+      print("🚀 Modelo cargado, ejecutando test...");
+      testWithKnownData();
+    }
   }
 
   @override
@@ -61,82 +98,136 @@ class _CameraPageState extends State<CameraPage> {
   }
 
   Future<void> _initializeHandLandmarker() async {
-    _plugin = await HandLandmarkerPlugin.create();
+    _plugin = HandLandmarkerPlugin.create();
   }
 
   Future<void> _processCameraImage(CameraImage image) async {
     final hands =
-        await _plugin!.detect(image, _controller!.description.sensorOrientation);
+        _plugin!.detect(image, _controller!.description.sensorOrientation);
+
+    print("📱 === PROCESANDO IMAGEN ===");
+    print("📱 Número de manos detectadas: ${hands.length}");
 
     if (hands.isNotEmpty && _predictionService.isLoaded) {
+      // Imprimir información de cada mano detectada
+      for (int i = 0; i < hands.length; i++) {
+        final hand = hands[i];
+        print("📱 Mano $i: ${hand.landmarks.length} landmarks");
+        
+        // Verificar que tenga exactamente 21 landmarks
+        if (hand.landmarks.length != 21) {
+          print("⚠️ ERROR: Mano $i tiene ${hand.landmarks.length} landmarks, esperado 21");
+          return;
+        }
+        
+        // Mostrar algunos landmarks para verificar
+        final wrist = hand.landmarks[0];
+        final thumb = hand.landmarks[4];
+        final index = hand.landmarks[8];
+        print("📱 Mano $i - Wrist: (${wrist.x.toStringAsFixed(3)}, ${wrist.y.toStringAsFixed(3)}, ${wrist.z.toStringAsFixed(3)})");
+        print("📱 Mano $i - Thumb: (${thumb.x.toStringAsFixed(3)}, ${thumb.y.toStringAsFixed(3)}, ${thumb.z.toStringAsFixed(3)})");
+        print("📱 Mano $i - Index: (${index.x.toStringAsFixed(3)}, ${index.y.toStringAsFixed(3)}, ${index.z.toStringAsFixed(3)})");
+      }
+
       // Ordenamos manos por eje X (izq -> der)
       final sortedHands = hands.toList()
         ..sort((a, b) =>
             a.landmarks.map((lm) => lm.x).reduce((s, v) => s + v).compareTo(
                 b.landmarks.map((lm) => lm.x).reduce((s, v) => s + v)));
 
+      print("📱 Manos ordenadas por posición X");
+
       List<double> row = [];
-      for (var hand in sortedHands) {
+      for (int handIdx = 0; handIdx < sortedHands.length; handIdx++) {
+        var hand = sortedHands[handIdx];
         var landmarks =
             hand.landmarks.map((lm) => [lm.x, lm.y, lm.z]).toList();
 
-        // Ajustar rotación según la cámara
-        landmarks = _rotateLandmarks(
-            landmarks, _controller!.description.sensorOrientation);
+        print("📱 Procesando mano $handIdx...");
+        print("📱 Landmarks RAW (primeros 5):");
+        for (int i = 0; i < 5; i++) {
+          final lm = landmarks[i];
+          print("📱   [$i]: (${lm[0].toStringAsFixed(6)}, ${lm[1].toStringAsFixed(6)}, ${lm[2].toStringAsFixed(6)})");
+        }
+        
+        // Mostrar landmarks específicos importantes para debug
+        print("📱 Landmarks clave:");
+        print("📱   Wrist[0]: (${landmarks[0][0].toStringAsFixed(6)}, ${landmarks[0][1].toStringAsFixed(6)}, ${landmarks[0][2].toStringAsFixed(6)})");
+        print("📱   Thumb[4]: (${landmarks[4][0].toStringAsFixed(6)}, ${landmarks[4][1].toStringAsFixed(6)}, ${landmarks[4][2].toStringAsFixed(6)})");
+        print("📱   Index[8]: (${landmarks[8][0].toStringAsFixed(6)}, ${landmarks[8][1].toStringAsFixed(6)}, ${landmarks[8][2].toStringAsFixed(6)})");
+        print("📱   Middle[12]: (${landmarks[12][0].toStringAsFixed(6)}, ${landmarks[12][1].toStringAsFixed(6)}, ${landmarks[12][2].toStringAsFixed(6)})");
+
+        // NO aplicar rotación - igual que en Python
+        // landmarks = _rotateLandmarks(
+        //     landmarks, _controller!.description.sensorOrientation);
 
         // Normalizar igual que en Python
         final vector = _predictionService.normalizeLandmarks(landmarks);
+        print("📱 Vector normalizado length: ${vector.length}");
+        print("📱 Vector normalizado (primeros 10): ${vector.take(10).map((v) => v.toStringAsFixed(4)).toList()}");
 
         row.addAll(vector);
       }
 
       // Padding a 126 (si hay 1 mano)
+      print("📱 Row length antes de padding: ${row.length}");
       while (row.length < 126) {
         row.add(0.0);
       }
+      print("📱 Row length después de padding: ${row.length}");
+
+      // Verificar que el row tenga exactamente 126 elementos
+      if (row.length != 126) {
+        print("❌ ERROR: Row tiene ${row.length} elementos, esperado 126");
+        return;
+      }
 
       // === Ahora predice con numHands ===
+      print("📱 Llamando a predict con ${row.length} features y ${hands.length} manos...");
       final prediction =
-          await _predictionService.predict(row, hands.length);
+          _predictionService.predict(row, hands.length);
 
       if (prediction != null &&
           prediction.label != "N/A" &&
-          prediction.confidence > 0.8) {
-        final now = DateTime.now();
+          prediction.confidence > 0.3) { // Subir threshold un poco
+        
+        // 🎯 Sistema de estabilización
+        _predictionCounts[prediction.label] = (_predictionCounts[prediction.label] ?? 0) + 1;
+        
+        // Limpiar contadores antiguos
+        _predictionCounts.removeWhere((label, count) => 
+            label != prediction.label && count < _stableThreshold);
+        
+        print("🎯 Prediction counts: $_predictionCounts");
+        
+        // Solo procesar si la predicción es estable
+        if (_predictionCounts[prediction.label]! >= _stableThreshold && 
+            prediction.label != _lastStableLabel) {
+          
+          final now = DateTime.now();
+          
+          if (now.difference(_lastPredictionTime) > _predictionDelay) {
+            _lastPredictionTime = now;
+            _lastStableLabel = prediction.label;
+            
+            // Resetear contadores
+            _predictionCounts.clear();
 
-        if (now.difference(_lastPredictionTime) > _predictionDelay) {
-          _lastPredictionTime = now;
+            // Agregar letra/palabra actual
+            _currentWord += "${prediction.label} ";
 
-          // Agregar letra actual a la palabra
-          _currentWord += "${prediction.label} ";
+            // Leer la predicción
+            _speak(prediction.label);
 
-          // Leer solo la letra actual
-          _speak(prediction.label);
-
-          setState(() {
-            _realTimeText = prediction.label;
-          });
+            setState(() {
+              _realTimeText = prediction.label;
+            });
+            
+            print("✅ PREDICCIÓN ESTABLE: ${prediction.label} (confianza: ${prediction.confidence.toStringAsFixed(3)})");
+          }
         }
       }
     }
-  }
-
-  List<List<double>> _rotateLandmarks(
-      List<List<double>> landmarks, int rotationDegrees) {
-    final rad = rotationDegrees * pi / 180;
-    final cosA = cos(rad);
-    final sinA = sin(rad);
-
-    return landmarks.map((lm) {
-      final x = lm[0];
-      final y = lm[1];
-      final z = lm[2];
-      return [
-        x * cosA - y * sinA,
-        x * sinA + y * cosA,
-        z
-      ];
-    }).toList();
   }
 
   Future<void> _speak(String text) async {
