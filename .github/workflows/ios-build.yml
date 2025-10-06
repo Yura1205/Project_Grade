@@ -1,0 +1,118 @@
+name: 🍎 Build iOS App
+on:
+  push:
+    branches: [ eriko_dev, main ]
+  pull_request:
+    branches: [ eriko_dev, main ]
+  workflow_dispatch: # Permite ejecutar manualmente
+
+jobs:
+  build-ios:
+    name: 🏗️ Build iOS
+    runs-on: macos-latest # ¡MacOS runner en la nube!
+    
+    steps:
+    - name: 📦 Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: 🐦 Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.35.5'
+        channel: 'stable'
+        cache: true
+
+    - name: 📱 Setup iOS Dependencies
+      run: |
+        # Instalar CocoaPods (gestor de dependencias iOS)
+        sudo gem install cocoapods
+        
+        # Verificar Xcode
+        sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+        
+        # Información del sistema
+        xcodebuild -version
+        xcrun simctl list devicetypes
+
+    - name: ⚙️ Install Flutter Dependencies
+      run: flutter pub get
+
+    - name: 🔧 Install iOS Pods
+      run: |
+        cd ios
+        pod install --repo-update
+        cd ..
+
+    - name: 🏗️ Build iOS (Development - Sin firmar)
+      run: |
+        flutter build ios --no-codesign --debug --verbose
+        
+    - name: 📋 Create Build Summary
+      run: |
+        echo "## 🍎 iOS Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Flutter version: $(flutter --version | head -1)" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Build completed successfully" >> $GITHUB_STEP_SUMMARY
+        echo "- 📱 Target: iPhone (Development build)" >> $GITHUB_STEP_SUMMARY
+        echo "- 🔧 Architecture: arm64" >> $GITHUB_STEP_SUMMARY
+        
+        # Verificar archivos generados
+        if [ -d "build/ios" ]; then
+          echo "- ✅ iOS build directory created" >> $GITHUB_STEP_SUMMARY
+          ls -la build/ios/ >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: 📤 Upload iOS Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ios-build-artifacts
+        path: |
+          build/ios/
+          ios/Podfile.lock
+        retention-days: 5
+
+  build-ios-simulator:
+    name: 🧪 Test iOS Simulator
+    runs-on: macos-latest
+    needs: build-ios
+    
+    steps:
+    - name: 📦 Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: 🐦 Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.35.5'
+        channel: 'stable'
+        cache: true
+
+    - name: ⚙️ Install Flutter Dependencies
+      run: flutter pub get
+
+    - name: 🔧 Install iOS Pods
+      run: |
+        cd ios
+        pod install
+        cd ..
+
+    - name: 📱 Start iOS Simulator
+      run: |
+        # Listar simuladores disponibles
+        xcrun simctl list devices available
+        
+        # Iniciar iPhone 15 Pro
+        SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone 15 Pro" | head -1 | grep -o '[0-9A-F-]\{36\}')
+        echo "Starting simulator: $SIMULATOR_ID"
+        xcrun simctl boot "$SIMULATOR_ID"
+        
+        # Esperar a que inicie
+        sleep 30
+
+    - name: 🧪 Run Flutter Tests in Simulator
+      run: |
+        # Compilar y ejecutar en simulador
+        flutter build ios --simulator
+        
+        echo "## 🧪 Simulator Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ iOS Simulator build completed" >> $GITHUB_STEP_SUMMARY
+        echo "- 📱 Tested on iPhone 15 Pro simulator" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,32 @@
+name: hand_detection_web
+description: "Versión web de detección de señas para iPhone"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.1.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Dependencias compatibles con web
+  camera: ^0.11.1  # Funciona en web con limitaciones
+  flutter_tts: ^3.7.0  # Funciona en web
+  # Reemplazar tflite_flutter con tensorflowjs_web
+  js: ^0.6.7
+  http: ^1.1.0
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/models/
+    - assets/labels.json
+    - assets/scaler_params.json

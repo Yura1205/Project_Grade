@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'camera_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 🔑 obtiene las cámaras disponibles
+  // � Forzar orientación horizontal
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
+
+  // �🔑 obtiene las cámaras disponibles
   final cameras = await availableCameras();
 
   // Por ejemplo, usamos la cámara trasera

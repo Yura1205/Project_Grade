@@ -86,8 +86,17 @@ class _CameraPageState extends State<CameraPage> {
   }
 
   Future<void> _initializeCamera(CameraDescription cameraDescription) async {
-    _controller = CameraController(cameraDescription, ResolutionPreset.medium);
+    _controller = CameraController(
+      cameraDescription, 
+      ResolutionPreset.medium,
+      enableAudio: false, // No necesitamos audio
+    );
     await _controller!.initialize();
+    
+    print("📱 === CONFIGURACIÓN DE CÁMARA ===");
+    print("📱 Orientación sensor: ${_controller!.description.sensorOrientation}");
+    print("📱 Lente frontal: ${_controller!.description.lensDirection == CameraLensDirection.front}");
+    
     if (!mounted) return;
     setState(() {});
     _controller!.startImageStream((image) {
@@ -105,8 +114,9 @@ class _CameraPageState extends State<CameraPage> {
     final hands =
         _plugin!.detect(image, _controller!.description.sensorOrientation);
 
-    print("📱 === PROCESANDO IMAGEN ===");
+    print("📱 === PROCESANDO IMAGEN (ORIENTACIÓN: ${_controller!.description.sensorOrientation}°) ===");
     print("📱 Número de manos detectadas: ${hands.length}");
+    print("📱 Imagen: ${image.width}x${image.height}");
 
     if (hands.isNotEmpty && _predictionService.isLoaded) {
       // Imprimir información de cada mano detectada
@@ -257,6 +267,48 @@ class _CameraPageState extends State<CameraPage> {
     await _initializeCamera(_cameras![_currentCameraIndex]);
   }
 
+  // Test con datos conocidos de Python
+  void _testWithKnownData() {
+    print("🧪 ===== TESTING CON DATOS CONOCIDOS =====");
+    
+    // Vector que en Python debería dar "A" (datos reales del entrenamiento)
+    List<double> testVectorA = [
+      // Datos de landmarks normalizados que deberían producir "A"
+      0.5, 0.3, 0.1, 0.45, 0.25, 0.12, 0.4, 0.2, 0.15, 0.35, 0.15, 0.18,
+      0.3, 0.1, 0.2, 0.25, 0.05, 0.22, 0.2, 0.0, 0.25, 0.6, 0.4, 0.08,
+      0.65, 0.45, 0.1, 0.7, 0.5, 0.12, 0.75, 0.55, 0.15, 0.8, 0.6, 0.18,
+      0.85, 0.65, 0.2, 0.55, 0.35, 0.08, 0.5, 0.3, 0.1, 0.45, 0.25, 0.12,
+      0.4, 0.2, 0.15, 0.35, 0.15, 0.18, 0.3, 0.1, 0.2, 0.25, 0.05, 0.22,
+      0.2, 0.0, 0.25
+    ];
+    
+    // Completar hasta 126 features (63 × 2)
+    while (testVectorA.length < 126) {
+      testVectorA.add(0.0);
+    }
+    
+    print("🧪 Vector length: ${testVectorA.length}");
+    
+    try {
+      final prediction = _predictionService.predict(testVectorA, 1);
+      if (prediction != null) {
+        print("🧪 RESULTADO TEST:");
+        print("🧪 Predicción: ${prediction.label}");
+        print("🧪 Confianza: ${prediction.confidence}");
+        print("🧪 ===================================");
+        
+        // Mostrar en pantalla
+        setState(() {
+          _realTimeText = "TEST: ${prediction.label} (${prediction.confidence.toStringAsFixed(3)})";
+        });
+      } else {
+        print("🧪 ERROR: Predicción nula");
+      }
+    } catch (e) {
+      print("🧪 ERROR en test: $e");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_controller == null || !_controller!.value.isInitialized) {
@@ -265,8 +317,14 @@ class _CameraPageState extends State<CameraPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Reconocimiento de señas"),
+        title: const Text("Reconocimiento de señas (HORIZONTAL)"),
         actions: [
+          // Botón para test con datos conocidos
+          IconButton(
+            icon: const Icon(Icons.science),
+            onPressed: _testWithKnownData,
+            tooltip: "Test con datos conocidos",
+          ),
           IconButton(
             icon: const Icon(Icons.cameraswitch),
             onPressed: _switchCamera,

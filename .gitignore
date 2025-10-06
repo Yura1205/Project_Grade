@@ -14,7 +14,7 @@ migrate_working_dir/
 
 # IDEs and editors
 .idea/
-*.iml
+# *.iml  - Comentado para permitir configuración del proyecto
 *.ipr
 *.iws
 .vscode/
@@ -34,11 +34,11 @@ app.*.map.json
 app.*.symbols
 
 # Platform-specific builds
-ios/
+# ios/  - Comentado para permitir configuración iOS
 android/app/debug
 android/app/profile
 android/app/release
 linux/
 macos/
 windows/
-web/
+# web/  - Comentado para permitir configuración web

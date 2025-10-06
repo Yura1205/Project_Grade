@@ -1,0 +1,24 @@
+# 🎯 Configuración Codemagic CI/CD para iOS
+# Visita: https://codemagic.io/start/
+# Conecta tu repo de GitHub y usa esta configuración
+
+workflows:
+  ios-workflow:
+    name: 🍎 iOS Workflow
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: 🔧 Install dependencies
+        script: |
+          flutter packages get
+      - name: 🍎 Build iOS
+        script: |
+          flutter build ios --no-codesign
+    artifacts:
+      - build/ios/**/*.app
+      - build/ios/**/*.ipa
+    publishing:
+      # Para distribución interna (sin App Store)
+      # Puedes configurar TestFlight aquí después
