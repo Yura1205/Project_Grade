@@ -8,8 +8,6 @@
 .buildlog/
 .history
 .svn/
-*.h5
-*.tflite
 migrate_working_dir/
 #assets/sign_language_model.h5
 #assets/sign_language_model.tflite
