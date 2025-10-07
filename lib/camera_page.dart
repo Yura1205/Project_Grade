@@ -35,15 +35,22 @@ class _CameraPageState extends State<CameraPage> {
   String _lastStableLabel = '';
   int _stableThreshold = 2; // Reducir a 2 para más responsividad
 
+  // ⏱️ Sistema de confirmación temporal (NUEVO)
+  String _candidateLabel = ''; // Seña candidata para confirmar
+  DateTime _candidateStartTime = DateTime.now(); // Cuándo empezó la seña candidata
+  Duration _confirmationDelay = Duration(milliseconds: 750); // 0.75s para confirmar
+  bool _isWaitingConfirmation = false; // Estado de espera
+  Timer? _uiUpdateTimer; // Timer para actualizar UI durante confirmación
+  
   // 🚀 Control de rendimiento
   bool _isProcessing = false; // Evitar procesamiento simultáneo
   int _frameSkip = 0; // Saltar frames para optimizar
 
-  // 🧭 Detección de orientación FIJA a portrait
-  DeviceOrientation _currentOrientation = DeviceOrientation.portraitUp;
-
   // 🎨 Control de tema
   bool _isDarkMode = true; // Comenzar en modo oscuro
+
+  // 🔊 Control de audio TTS
+  bool _isTTSEnabled = true; // Audio activado por defecto
 
   @override
   void initState() {
@@ -126,6 +133,7 @@ class _CameraPageState extends State<CameraPage> {
 
   @override
   void dispose() {
+    _stopUIUpdateTimer(); // Detener timer de confirmación
     _controller?.dispose();
     super.dispose();
   }
@@ -286,22 +294,16 @@ class _CameraPageState extends State<CameraPage> {
           
           if (now.difference(_lastPredictionTime) > _predictionDelay) {
             _lastPredictionTime = now;
-            _lastStableLabel = prediction.label;
             
-            // Resetear contadores
-            _predictionCounts.clear();
-
-            // Agregar letra/palabra actual
-            _currentWord += "${prediction.label} ";
-
-            // Leer la predicción
-            _speak(prediction.label);
-
+            // 🎯 Sistema de confirmación temporal
+            _handlePredictionWithConfirmation(prediction.label, now);
+            
+            // Actualizar texto en tiempo real inmediatamente
             setState(() {
               _realTimeText = prediction.label;
             });
             
-            print("✅ PREDICCIÓN ESTABLE: ${prediction.label} (confianza: ${prediction.confidence.toStringAsFixed(3)})");
+            print("📊 PREDICCIÓN DETECTADA: ${prediction.label} (confianza: ${prediction.confidence.toStringAsFixed(3)})");
           }
         }
       }
@@ -312,17 +314,155 @@ class _CameraPageState extends State<CameraPage> {
     }
   }
 
+  // ⏱️ Sistema de confirmación temporal para predicciones
+  void _handlePredictionWithConfirmation(String detectedLabel, DateTime now) {
+    // Si es la misma seña que estamos confirmando
+    if (_candidateLabel == detectedLabel && _isWaitingConfirmation) {
+      // Verificar si ha pasado suficiente tiempo
+      Duration timeWaiting = now.difference(_candidateStartTime);
+      
+      if (timeWaiting >= _confirmationDelay) {
+        // ✅ CONFIRMAR: Agregar la seña a la palabra
+        _confirmSign(detectedLabel);
+        _resetConfirmationState();
+        
+        print("✅ SEÑA CONFIRMADA después de ${timeWaiting.inMilliseconds}ms: $detectedLabel");
+      } else {
+        // 🕒 Seguir esperando
+        print("🕒 Esperando confirmación: $detectedLabel (${timeWaiting.inMilliseconds}/${_confirmationDelay.inMilliseconds}ms)");
+      }
+    } 
+    // Si es una seña diferente
+    else {
+      // Iniciar nueva confirmación
+      _candidateLabel = detectedLabel;
+      _candidateStartTime = now;
+      _isWaitingConfirmation = true;
+      
+      // Iniciar timer para actualizar UI
+      _startUIUpdateTimer();
+      
+      print("🆕 Nueva seña candidata: $detectedLabel - Iniciando confirmación...");
+    }
+  }
+
+  // ✅ Confirmar y agregar seña a la palabra
+  void _confirmSign(String confirmedLabel) {
+    setState(() {
+      _currentWord += "$confirmedLabel ";
+    });
+    
+    // Leer la seña confirmada
+    _speak(confirmedLabel);
+    
+    print("📝 Seña agregada a palabra: '$confirmedLabel' -> Palabra actual: '$_currentWord'");
+  }
+
+  // 🔄 Resetear estado de confirmación
+  void _resetConfirmationState() {
+    _candidateLabel = '';
+    _isWaitingConfirmation = false;
+    _candidateStartTime = DateTime.now();
+    _stopUIUpdateTimer();
+  }
+
+  // ⏱️ Iniciar timer para actualizar UI durante confirmación
+  void _startUIUpdateTimer() {
+    _stopUIUpdateTimer(); // Detener timer anterior si existe
+    
+    _uiUpdateTimer = Timer.periodic(Duration(milliseconds: 50), (timer) {
+      if (_isWaitingConfirmation && mounted) {
+        setState(() {
+          // Actualizar UI para mostrar progreso
+        });
+        
+        // Verificar si ya se completó el tiempo
+        Duration timeWaiting = DateTime.now().difference(_candidateStartTime);
+        if (timeWaiting >= _confirmationDelay) {
+          timer.cancel();
+        }
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  // ⏹️ Detener timer de actualización de UI
+  void _stopUIUpdateTimer() {
+    _uiUpdateTimer?.cancel();
+    _uiUpdateTimer = null;
+  }
+
+  // 📱 Obtener texto de estado para mostrar en UI
+  String _getDetectionStatusText() {
+    if (_realTimeText.isEmpty) {
+      return 'Esperando...';
+    }
+    
+    if (_isWaitingConfirmation) {
+      Duration timeWaiting = DateTime.now().difference(_candidateStartTime);
+      double progress = timeWaiting.inMilliseconds / _confirmationDelay.inMilliseconds;
+      int percentage = (progress * 100).clamp(0, 100).round();
+      
+      return '$_candidateLabel (confirmando... $percentage%)';
+    }
+    
+    return _realTimeText;
+  }
+
+  // 🎨 Obtener color de estado para la UI
+  Color _getDetectionStatusColor() {
+    if (_isWaitingConfirmation) {
+      return const Color(0xFFFF9500); // iOS orange (confirmando)
+    }
+    
+    if (_realTimeText.isNotEmpty) {
+      return const Color(0xFF34C759); // iOS green (detectado)
+    }
+    
+    return Colors.grey; // Esperando
+  }
+
   Future<void> _speak(String text) async {
-    await _tts.setLanguage("es-ES");
-    await _tts.setSpeechRate(0.7);
-    await _tts.speak(text);
+    // 🔊 Solo hablar si TTS está activado
+    if (!_isTTSEnabled) {
+      print("🔇 TTS desactivado - No se reproduce: $text");
+      return;
+    }
+    
+    try {
+      await _tts.setLanguage("es-ES");
+      await _tts.setSpeechRate(0.7);
+      await _tts.speak(text);
+      print("🔊 TTS reproduciendo: $text");
+    } catch (e) {
+      print("❌ Error en TTS: $e");
+    }
   }
 
   void _deleteLastLetter() {
     if (_currentWord.isNotEmpty) {
       setState(() {
-        _currentWord = _currentWord.substring(0, _currentWord.length - 1);
+        // Borrar palabra completa (hasta el último espacio)
+        String trimmed = _currentWord.trimRight(); // Quitar espacios del final
+        
+        if (trimmed.isEmpty) {
+          _currentWord = '';
+        } else {
+          // Buscar el último espacio
+          int lastSpaceIndex = trimmed.lastIndexOf(' ');
+          
+          if (lastSpaceIndex != -1) {
+            // Si hay espacios, borrar hasta el último espacio (incluyendo el espacio)
+            _currentWord = trimmed.substring(0, lastSpaceIndex + 1);
+          } else {
+            // Si no hay espacios, borrar todo
+            _currentWord = '';
+          }
+        }
       });
+      
+      print("🗑️ Borrar palabra - Resultado: '$_currentWord'");
     }
   }
 
@@ -406,6 +546,11 @@ class _CameraPageState extends State<CameraPage> {
         ),
         centerTitle: true,
         actions: [
+          // Toggle de TTS (audio) en el AppBar
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            child: _buildTTSToggle(),
+          ),
           // Toggle de tema en el AppBar
           Container(
             margin: const EdgeInsets.only(right: 8),
@@ -519,12 +664,12 @@ class _CameraPageState extends State<CameraPage> {
                           ),
                           const SizedBox(height: 20),
                           
-                          // Texto de seña detectada
+                          // Texto de seña detectada con estado de confirmación
                           _buildInfoCard(
                             title: 'Seña detectada',
-                            content: _realTimeText.isEmpty ? 'Esperando...' : _realTimeText,
+                            content: _getDetectionStatusText(),
                             icon: Icons.sign_language_outlined,
-                            color: const Color(0xFF34C759), // iOS green
+                            color: _getDetectionStatusColor(),
                           ),
                           
                           const SizedBox(height: 16),
@@ -546,7 +691,7 @@ class _CameraPageState extends State<CameraPage> {
                               Expanded(
                                 child: _buildActionButton(
                                   icon: Icons.backspace_outlined,
-                                  label: 'Borrar',
+                                  label: 'Borrar Palabra',
                                   color: const Color(0xFFFF3B30), // iOS red
                                   onPressed: _deleteLastLetter,
                                 ),
@@ -613,6 +758,74 @@ class _CameraPageState extends State<CameraPage> {
             icon,
             color: _isDarkMode ? Colors.white : Colors.black,
             size: 20,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Widget para toggle de TTS (audio) estilo iOS - Versión AppBar
+  Widget _buildTTSToggle() {
+    return Container(
+      width: 50,
+      height: 28,
+      decoration: BoxDecoration(
+        color: _isTTSEnabled 
+            ? const Color(0xFF007AFF).withOpacity(0.3) // Azul iOS cuando activado
+            : Colors.grey.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: _isTTSEnabled 
+              ? const Color(0xFF007AFF).withOpacity(0.6)
+              : Colors.grey.withOpacity(0.6),
+          width: 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () {
+            setState(() {
+              _isTTSEnabled = !_isTTSEnabled;
+            });
+            
+            // Feedback inmediato
+            if (_isTTSEnabled) {
+              _speak("Audio activado");
+            }
+            
+            print("🔊 TTS ${_isTTSEnabled ? 'activado' : 'desactivado'}");
+          },
+          child: Stack(
+            children: [
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                left: _isTTSEnabled ? 24 : 2,
+                top: 2,
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: _isTTSEnabled ? Colors.white : Colors.black,
+                    borderRadius: BorderRadius.circular(11),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    _isTTSEnabled ? Icons.volume_up : Icons.volume_off,
+                    size: 14,
+                    color: _isTTSEnabled ? Colors.black : Colors.white,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
