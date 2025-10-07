@@ -39,7 +39,7 @@ class _CameraPageState extends State<CameraPage> {
   bool _isProcessing = false; // Evitar procesamiento simultáneo
   int _frameSkip = 0; // Saltar frames para optimizar
 
-  // 🧭 Detección de orientación automática
+  // 🧭 Detección de orientación FIJA a portrait
   DeviceOrientation _currentOrientation = DeviceOrientation.portraitUp;
 
   // 🎨 Control de tema
@@ -51,94 +51,37 @@ class _CameraPageState extends State<CameraPage> {
     _initializeAll();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _initializeOrientationListener();
-  }
-
-  // 🧭 Inicializar listener de orientación
-  void _initializeOrientationListener() {
-    // Obtener orientación inicial cuando el contexto esté disponible
-    _updateOrientation();
-  }
-
-  // 🧭 Actualizar orientación actual
-  void _updateOrientation() {
-    if (mounted) {
-      final MediaQueryData mediaQuery = MediaQuery.of(context);
-      final Size size = mediaQuery.size;
-      final double width = size.width;
-      final double height = size.height;
-      
-      // Determinar orientación basada en dimensiones reales
-      if (height > width) {
-        // Más alto que ancho = Portrait
-        _currentOrientation = DeviceOrientation.portraitUp;
-      } else {
-        // Más ancho que alto = Landscape  
-        _currentOrientation = DeviceOrientation.landscapeLeft;
-      }
-      
-      print("🧭 Orientación detectada: $_currentOrientation (${width.toInt()}x${height.toInt()})");
-    }
-  }
-
-  // 🧭 Compensar orientación de landmarks automáticamente
-  List<List<double>> _compensateOrientation(List<List<double>> landmarks) {
-    print("🧭 Aplicando compensación para orientación: $_currentOrientation");
+  // 🧭 Rotación fija de landmarks 90° para cámara vertical
+  List<List<double>> _rotateLandmarksForPortrait(List<List<double>> landmarks) {
+    print("🧭 Aplicando rotación 90° para cámara vertical");
     
-    // Si estamos en portrait, los landmarks ya están correctos (orientación base del modelo)
-    if (_currentOrientation == DeviceOrientation.portraitUp) {
-      print("🧭 Portrait: No se requiere compensación");
-      return landmarks;
-    }
-
     // Crear una copia de landmarks para no modificar el original
-    List<List<double>> compensatedLandmarks = landmarks
+    List<List<double>> rotatedLandmarks = landmarks
         .map((landmark) => List<double>.from(landmark))
         .toList();
 
-    print("🧭 Landmarks antes de compensación (primeros 3):");
+    print("🧭 Landmarks originales (primeros 3):");
     for (int i = 0; i < math.min(3, landmarks.length); i++) {
       print("🧭   [$i]: (${landmarks[i][0].toStringAsFixed(3)}, ${landmarks[i][1].toStringAsFixed(3)}, ${landmarks[i][2].toStringAsFixed(3)})");
     }
 
-    // Aplicar rotación según la orientación detectada
-    for (int i = 0; i < compensatedLandmarks.length; i++) {
-      double x = compensatedLandmarks[i][0];
-      double y = compensatedLandmarks[i][1];
+    // Rotar 90° horario para ajustar la orientación de la cámara
+    for (int i = 0; i < rotatedLandmarks.length; i++) {
+      double x = rotatedLandmarks[i][0];
+      double y = rotatedLandmarks[i][1];
       // Z no se ve afectado por rotación 2D, se mantiene igual
 
-      switch (_currentOrientation) {
-        case DeviceOrientation.landscapeLeft:
-          // Para landscape left, necesitamos rotar los puntos 
-          // Como si rotáramos la imagen 90° antihorario
-          compensatedLandmarks[i][0] = 1.0 - y;
-          compensatedLandmarks[i][1] = x;
-          break;
-        case DeviceOrientation.landscapeRight:
-          // Para landscape right, rotar 90° horario
-          compensatedLandmarks[i][0] = y;
-          compensatedLandmarks[i][1] = 1.0 - x;
-          break;
-        case DeviceOrientation.portraitDown:
-          // Rotar 180°: (x,y) -> (1-x, 1-y)
-          compensatedLandmarks[i][0] = 1.0 - x;
-          compensatedLandmarks[i][1] = 1.0 - y;
-          break;
-        default:
-          // portraitUp - no cambiar
-          break;
-      }
+      // Rotación 90° horario: (x,y) -> (y, 1-x)
+      rotatedLandmarks[i][0] = y;
+      rotatedLandmarks[i][1] = 1.0 - x;
     }
 
-    print("🧭 Landmarks después de compensación (primeros 3):");
-    for (int i = 0; i < math.min(3, compensatedLandmarks.length); i++) {
-      print("🧭   [$i]: (${compensatedLandmarks[i][0].toStringAsFixed(3)}, ${compensatedLandmarks[i][1].toStringAsFixed(3)}, ${compensatedLandmarks[i][2].toStringAsFixed(3)})");
+    print("🧭 Landmarks después de rotación 90° (primeros 3):");
+    for (int i = 0; i < math.min(3, rotatedLandmarks.length); i++) {
+      print("🧭   [$i]: (${rotatedLandmarks[i][0].toStringAsFixed(3)}, ${rotatedLandmarks[i][1].toStringAsFixed(3)}, ${rotatedLandmarks[i][2].toStringAsFixed(3)})");
     }
 
-    return compensatedLandmarks;
+    return rotatedLandmarks;
   }
 
   // Test con datos conocidos - AGREGAR ESTE MÉTODO
@@ -288,9 +231,9 @@ class _CameraPageState extends State<CameraPage> {
         print("📱   Index[8]: (${landmarks[8][0].toStringAsFixed(6)}, ${landmarks[8][1].toStringAsFixed(6)}, ${landmarks[8][2].toStringAsFixed(6)})");
         print("📱   Middle[12]: (${landmarks[12][0].toStringAsFixed(6)}, ${landmarks[12][1].toStringAsFixed(6)}, ${landmarks[12][2].toStringAsFixed(6)})");
 
-        // 🧭 Aplicar compensación de orientación automática
-        landmarks = _compensateOrientation(landmarks);
-        print("📱 Landmarks después de compensación de orientación (primeros 3):");
+        // 🧭 Aplicar rotación 90° para orientación vertical fija
+        landmarks = _rotateLandmarksForPortrait(landmarks);
+        print("📱 Landmarks después de rotación para portrait (primeros 3):");
         for (int i = 0; i < 3; i++) {
           final lm = landmarks[i];
           print("📱   [$i]: (${lm[0].toStringAsFixed(6)}, ${lm[1].toStringAsFixed(6)}, ${lm[2].toStringAsFixed(6)})");
@@ -398,9 +341,6 @@ class _CameraPageState extends State<CameraPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 🧭 Actualizar orientación en cada rebuild para detección en tiempo real
-    _updateOrientation();
-    
     if (_controller == null || !_controller!.value.isInitialized) {
       return Scaffold(
         backgroundColor: _isDarkMode ? Colors.black : const Color(0xFFF2F2F7),

@@ -6,12 +6,9 @@ import 'camera_page.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 🔄 Permitir todas las orientaciones para detección automática
+  // � Bloquear orientación solo a portrait (vertical)
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
   ]);
 
   // 🔑 obtiene las cámaras disponibles
