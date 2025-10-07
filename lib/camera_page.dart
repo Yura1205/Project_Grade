@@ -42,47 +42,55 @@ class _CameraPageState extends State<CameraPage> {
   // 🧭 Detección de orientación automática
   DeviceOrientation _currentOrientation = DeviceOrientation.portraitUp;
 
+  // 🎨 Control de tema
+  bool _isDarkMode = true; // Comenzar en modo oscuro
+
   @override
   void initState() {
     super.initState();
     _initializeAll();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
     _initializeOrientationListener();
   }
 
   // 🧭 Inicializar listener de orientación
   void _initializeOrientationListener() {
-    // Obtener orientación inicial
+    // Obtener orientación inicial cuando el contexto esté disponible
     _updateOrientation();
-    
-    // Escuchar cambios de orientación usando MediaQuery
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _updateOrientation();
-    });
   }
 
   // 🧭 Actualizar orientación actual
   void _updateOrientation() {
     if (mounted) {
       final MediaQueryData mediaQuery = MediaQuery.of(context);
-      final Orientation orientation = mediaQuery.orientation;
+      final Size size = mediaQuery.size;
+      final double width = size.width;
+      final double height = size.height;
       
-      // Determinar orientación específica basada en las dimensiones
-      if (orientation == Orientation.portrait) {
+      // Determinar orientación basada en dimensiones reales
+      if (height > width) {
+        // Más alto que ancho = Portrait
         _currentOrientation = DeviceOrientation.portraitUp;
       } else {
-        // Para landscape, asumimos landscapeLeft por defecto
-        // En implementación más avanzada se podría usar sensors
+        // Más ancho que alto = Landscape  
         _currentOrientation = DeviceOrientation.landscapeLeft;
       }
       
-      print("🧭 Orientación detectada: $_currentOrientation");
+      print("🧭 Orientación detectada: $_currentOrientation (${width.toInt()}x${height.toInt()})");
     }
   }
 
   // 🧭 Compensar orientación de landmarks automáticamente
   List<List<double>> _compensateOrientation(List<List<double>> landmarks) {
-    // Si estamos en portrait, no necesitamos compensar (orientación base)
+    print("🧭 Aplicando compensación para orientación: $_currentOrientation");
+    
+    // Si estamos en portrait, los landmarks ya están correctos (orientación base del modelo)
     if (_currentOrientation == DeviceOrientation.portraitUp) {
+      print("🧭 Portrait: No se requiere compensación");
       return landmarks;
     }
 
@@ -90,6 +98,11 @@ class _CameraPageState extends State<CameraPage> {
     List<List<double>> compensatedLandmarks = landmarks
         .map((landmark) => List<double>.from(landmark))
         .toList();
+
+    print("🧭 Landmarks antes de compensación (primeros 3):");
+    for (int i = 0; i < math.min(3, landmarks.length); i++) {
+      print("🧭   [$i]: (${landmarks[i][0].toStringAsFixed(3)}, ${landmarks[i][1].toStringAsFixed(3)}, ${landmarks[i][2].toStringAsFixed(3)})");
+    }
 
     // Aplicar rotación según la orientación detectada
     for (int i = 0; i < compensatedLandmarks.length; i++) {
@@ -99,14 +112,15 @@ class _CameraPageState extends State<CameraPage> {
 
       switch (_currentOrientation) {
         case DeviceOrientation.landscapeLeft:
-          // Rotar 90° en sentido horario: (x,y) -> (y, 1-x)
-          compensatedLandmarks[i][0] = y;
-          compensatedLandmarks[i][1] = 1.0 - x;
-          break;
-        case DeviceOrientation.landscapeRight:
-          // Rotar 90° en sentido antihorario: (x,y) -> (1-y, x)
+          // Para landscape left, necesitamos rotar los puntos 
+          // Como si rotáramos la imagen 90° antihorario
           compensatedLandmarks[i][0] = 1.0 - y;
           compensatedLandmarks[i][1] = x;
+          break;
+        case DeviceOrientation.landscapeRight:
+          // Para landscape right, rotar 90° horario
+          compensatedLandmarks[i][0] = y;
+          compensatedLandmarks[i][1] = 1.0 - x;
           break;
         case DeviceOrientation.portraitDown:
           // Rotar 180°: (x,y) -> (1-x, 1-y)
@@ -119,7 +133,11 @@ class _CameraPageState extends State<CameraPage> {
       }
     }
 
-    print("🧭 Compensación aplicada para orientación: $_currentOrientation");
+    print("🧭 Landmarks después de compensación (primeros 3):");
+    for (int i = 0; i < math.min(3, compensatedLandmarks.length); i++) {
+      print("🧭   [$i]: (${compensatedLandmarks[i][0].toStringAsFixed(3)}, ${compensatedLandmarks[i][1].toStringAsFixed(3)}, ${compensatedLandmarks[i][2].toStringAsFixed(3)})");
+    }
+
     return compensatedLandmarks;
   }
 
@@ -378,145 +396,500 @@ class _CameraPageState extends State<CameraPage> {
     await _initializeCamera(_cameras![_currentCameraIndex]);
   }
 
-  // Test con datos conocidos de Python
-  void _testWithKnownData() {
-    print("🧪 ===== TESTING CON DATOS CONOCIDOS =====");
-    
-    // Vector que en Python debería dar "A" (datos reales del entrenamiento)
-    List<double> testVectorA = [
-      // Datos de landmarks normalizados que deberían producir "A"
-      0.5, 0.3, 0.1, 0.45, 0.25, 0.12, 0.4, 0.2, 0.15, 0.35, 0.15, 0.18,
-      0.3, 0.1, 0.2, 0.25, 0.05, 0.22, 0.2, 0.0, 0.25, 0.6, 0.4, 0.08,
-      0.65, 0.45, 0.1, 0.7, 0.5, 0.12, 0.75, 0.55, 0.15, 0.8, 0.6, 0.18,
-      0.85, 0.65, 0.2, 0.55, 0.35, 0.08, 0.5, 0.3, 0.1, 0.45, 0.25, 0.12,
-      0.4, 0.2, 0.15, 0.35, 0.15, 0.18, 0.3, 0.1, 0.2, 0.25, 0.05, 0.22,
-      0.2, 0.0, 0.25
-    ];
-    
-    // Completar hasta 126 features (63 × 2)
-    while (testVectorA.length < 126) {
-      testVectorA.add(0.0);
-    }
-    
-    print("🧪 Vector length: ${testVectorA.length}");
-    
-    try {
-      final prediction = _predictionService.predict(testVectorA, 1);
-      if (prediction != null) {
-        print("🧪 RESULTADO TEST:");
-        print("🧪 Predicción: ${prediction.label}");
-        print("🧪 Confianza: ${prediction.confidence}");
-        print("🧪 ===================================");
-        
-        // Mostrar en pantalla
-        setState(() {
-          _realTimeText = "TEST: ${prediction.label} (${prediction.confidence.toStringAsFixed(3)})";
-        });
-      } else {
-        print("🧪 ERROR: Predicción nula");
-      }
-    } catch (e) {
-      print("🧪 ERROR en test: $e");
-    }
-  }
-
-  @override
   @override
   Widget build(BuildContext context) {
-    // 🧭 Actualizar orientación cuando se reconstruye el widget
+    // 🧭 Actualizar orientación en cada rebuild para detección en tiempo real
     _updateOrientation();
     
     if (_controller == null || !_controller!.value.isInitialized) {
-      return const Center(child: CircularProgressIndicator());
+      return Scaffold(
+        backgroundColor: _isDarkMode ? Colors.black : const Color(0xFFF2F2F7),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: _isDarkMode 
+                      ? Colors.white.withOpacity(0.1)
+                      : Colors.white.withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xFF007AFF), // iOS blue
+                    strokeWidth: 3,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Iniciando cámara...',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: _isDarkMode 
+                      ? Colors.white.withOpacity(0.8)
+                      : Colors.black.withOpacity(0.8),
+                  letterSpacing: -0.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     return Scaffold(
+      backgroundColor: _isDarkMode ? Colors.black : const Color(0xFFF2F2F7),
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text("Reconocimiento de señas (AUTO-ORIENTACIÓN)"),
-        actions: [
-          // Botón para test con datos conocidos
-          IconButton(
-            icon: const Icon(Icons.science),
-            onPressed: _testWithKnownData,
-            tooltip: "Test con datos conocidos",
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: Text(
+          'SignLang AI',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: _isDarkMode ? Colors.white : Colors.black,
+            letterSpacing: -0.5,
           ),
-          IconButton(
-            icon: const Icon(Icons.cameraswitch),
-            onPressed: _switchCamera,
+        ),
+        centerTitle: true,
+        actions: [
+          // Toggle de tema en el AppBar
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            child: _buildThemeToggle(),
+          ),
+          // Botón de cambiar cámara
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            child: _buildGlassButton(
+              icon: Icons.cameraswitch_outlined,
+              onPressed: _switchCamera,
+            ),
           ),
         ],
       ),
-      body: Column(
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Espaciado superior para el AppBar
+            const SizedBox(height: 20),
+            
+            // Cámara con bordes redondeados estilo iOS
+            Expanded(
+              flex: 3, // 60% del espacio disponible
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 20),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(28),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: _controller!.value.previewSize!.height,
+                        height: _controller!.value.previewSize!.width,
+                        child: CameraPreview(_controller!),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            
+            // Espaciado entre cámara y panel
+            const SizedBox(height: 20),
+            
+            // Panel de información con glassmorphism - SIN SUPERPOSICIÓN
+            Expanded(
+              flex: 2, // 40% del espacio disponible
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: _isDarkMode ? [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.8),
+                      Colors.black.withOpacity(0.95),
+                    ] : [
+                      Colors.transparent,
+                      Colors.white.withOpacity(0.8),
+                      Colors.white.withOpacity(0.95),
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(32),
+                    topRight: Radius.circular(32),
+                  ),
+                ),
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(32),
+                    topRight: Radius.circular(32),
+                  ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: _isDarkMode 
+                          ? Colors.white.withOpacity(0.1)
+                          : Colors.black.withOpacity(0.05),
+                      border: Border.all(
+                        color: _isDarkMode 
+                            ? Colors.white.withOpacity(0.2)
+                            : Colors.black.withOpacity(0.1),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Indicador de arrastre iOS
+                          Container(
+                            width: 36,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: _isDarkMode 
+                                  ? Colors.white.withOpacity(0.3)
+                                  : Colors.black.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          
+                          // Texto de seña detectada
+                          _buildInfoCard(
+                            title: 'Seña detectada',
+                            content: _realTimeText.isEmpty ? 'Esperando...' : _realTimeText,
+                            icon: Icons.sign_language_outlined,
+                            color: const Color(0xFF34C759), // iOS green
+                          ),
+                          
+                          const SizedBox(height: 16),
+                          
+                          // Texto de palabra construida - SCROLLABLE si es muy largo
+                          _buildInfoCard(
+                            title: 'Palabra formada',
+                            content: _currentWord.isEmpty ? 'Vacía' : _currentWord,
+                            icon: Icons.text_fields_outlined,
+                            color: const Color(0xFF007AFF), // iOS blue
+                            isScrollable: true, // Nueva propiedad para scroll
+                          ),
+                          
+                          const SizedBox(height: 24),
+                          
+                          // Botones de acción con estilo líquido
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildActionButton(
+                                  icon: Icons.backspace_outlined,
+                                  label: 'Borrar',
+                                  color: const Color(0xFFFF3B30), // iOS red
+                                  onPressed: _deleteLastLetter,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildActionButton(
+                                  icon: Icons.refresh_outlined,
+                                  label: 'Limpiar',
+                                  color: const Color(0xFF007AFF), // iOS blue
+                                  onPressed: _resetWord,
+                                ),
+                              ),
+                            ],
+                          ),
+                          // Padding extra para evitar overflow
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Widget para botones de cristal estilo iOS
+  Widget _buildGlassButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: _isDarkMode 
+            ? Colors.white.withOpacity(0.15)
+            : Colors.black.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _isDarkMode 
+              ? Colors.white.withOpacity(0.2)
+              : Colors.black.withOpacity(0.15),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onPressed,
+          child: Icon(
+            icon,
+            color: _isDarkMode ? Colors.white : Colors.black,
+            size: 20,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Widget para toggle de tema estilo iOS - Versión AppBar
+  Widget _buildThemeToggle() {
+    return Container(
+      width: 50,
+      height: 28,
+      decoration: BoxDecoration(
+        color: _isDarkMode 
+            ? const Color(0xFF34C759).withOpacity(0.3)
+            : Colors.grey.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: _isDarkMode 
+              ? const Color(0xFF34C759).withOpacity(0.6)
+              : Colors.grey.withOpacity(0.6),
+          width: 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () {
+            setState(() {
+              _isDarkMode = !_isDarkMode;
+            });
+          },
+          child: Stack(
+            children: [
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                left: _isDarkMode ? 24 : 2,
+                top: 2,
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: _isDarkMode ? Colors.white : Colors.black,
+                    borderRadius: BorderRadius.circular(11),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    _isDarkMode ? Icons.dark_mode : Icons.light_mode,
+                    size: 14,
+                    color: _isDarkMode ? Colors.black : Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Widget para tarjetas de información
+  Widget _buildInfoCard({
+    required String title,
+    required String content,
+    required IconData icon,
+    required Color color,
+    bool isScrollable = false,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _isDarkMode 
+            ? Colors.white.withOpacity(0.08)
+            : Colors.black.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _isDarkMode 
+              ? Colors.white.withOpacity(0.15)
+              : Colors.black.withOpacity(0.1),
+          width: 1,
+        ),
+      ),
+      child: Row(
         children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 16),
           Expanded(
-            flex: 2,
-            child: AspectRatio(
-              aspectRatio: _controller!.value.aspectRatio,
-              child: CameraPreview(_controller!),
-            ),
-          ),
-          Container(
-            color: Colors.black87,
-            padding: const EdgeInsets.all(16.0),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Seña actual: $_realTimeText",
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                  title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _isDarkMode 
+                        ? Colors.white.withOpacity(0.7)
+                        : Colors.black.withOpacity(0.7),
+                    letterSpacing: -0.1,
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  "Palabra: $_currentWord",
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: Colors.white70,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Botones de control optimizados
-          Container(
-            color: Colors.grey[900],
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _deleteLastLetter,
-                  icon: const Icon(Icons.backspace),
-                  label: const Text("Borrar"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red[700],
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _resetWord,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text("Reset"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[700],
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _testWithKnownData,
-                  icon: const Icon(Icons.science),
-                  label: const Text("Test"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[700],
-                    foregroundColor: Colors.white,
-                  ),
-                ),
+                const SizedBox(height: 2),
+                isScrollable && content.length > 50
+                    ? Container(
+                        height: 60,
+                        child: SingleChildScrollView(
+                          child: Text(
+                            content,
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                              color: _isDarkMode ? Colors.white : Colors.black,
+                              letterSpacing: -0.4,
+                            ),
+                          ),
+                        ),
+                      )
+                    : Text(
+                        content,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          color: _isDarkMode ? Colors.white : Colors.black,
+                          letterSpacing: -0.4,
+                        ),
+                        maxLines: isScrollable ? null : 2,
+                        overflow: isScrollable ? null : TextOverflow.ellipsis,
+                      ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // Widget para botones de acción estilo iOS líquido
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      height: 54,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            color.withOpacity(0.8),
+            color.withOpacity(0.6),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onPressed,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.2),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
